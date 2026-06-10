@@ -520,7 +520,7 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                 </div>
 
                 {/* Product Grid - Large Images, Mobile-friendly 2 cols */}
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                   {catProducts.map((product) => {
                     const inCart = cart.find(item => item.id === product.id);
                     return (
@@ -528,15 +528,16 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                         key={product.id}
                         className="bg-[#F4F7FC] p-3 rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md hover:border-slate-300 transition-all flex flex-col justify-between group"
                       >
-                        {/* Product Image - Aspect Square Contain, White BG, Clickable */}
+                        {/* Product Image */}
                         <div 
                           onClick={() => setSelectedProductDetails(product)}
-                          className="relative w-full aspect-square bg-white p-3 rounded-2xl flex items-center justify-center border border-slate-100 cursor-pointer overflow-hidden shadow-sm"
+                          className="relative w-full bg-white rounded-2xl flex items-center justify-center border border-slate-100 cursor-pointer overflow-hidden shadow-sm"
+                          style={{ aspectRatio: '1 / 1' }}
                         >
                           <img
                             src={product.imageUrl}
                             alt={product.name}
-                            className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform duration-300"
+                            className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform duration-300 p-3"
                           />
                           {product.stock <= 10 && (
                             <span className="absolute top-2 right-2 bg-[#CD2628] text-white text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider shadow">
@@ -557,15 +558,14 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                         {/* Product Info */}
                         <div className="flex-grow flex flex-col justify-between">
                           <div>
-                            {/* Full Title (never truncated, uppercase bold) */}
                             <h3 
                               onClick={() => setSelectedProductDetails(product)}
-                              className="font-extrabold text-slate-800 uppercase leading-snug text-xs hover:text-[#1C60B0] transition-colors cursor-pointer mb-2.5 break-words"
+                              className="font-extrabold text-slate-800 uppercase leading-snug text-xs sm:text-[11px] hover:text-[#1C60B0] transition-colors cursor-pointer mb-2.5 break-words"
                             >
                               {product.name}
                             </h3>
                             
-                            {/* Three Pills Row (EAN, Wiek, PCB) */}
+                            {/* Pills */}
                             <div className="flex flex-wrap gap-1.5 mb-3">
                               <span className="bg-[#EDF2F9] text-[#4F709C] px-2.5 py-0.5 rounded-lg text-[10px] font-semibold border border-blue-50/50">
                                 {product.ean}
@@ -580,8 +580,8 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                           </div>
 
                           {/* Pricing and Cart button */}
-                          <div className="pt-2 border-t border-slate-100/50 flex items-center justify-between mt-auto">
-                            <div>
+                          <div className="pt-2 border-t border-slate-100/50 flex items-center justify-between mt-auto gap-2">
+                            <div className="shrink-0">
                               {product.discountRate > 0 && (
                                 <span className="text-[10px] text-slate-400 line-through block leading-none mb-0.5">
                                   {product.originalPrice.toFixed(2).replace('.', ',')} zł
@@ -593,15 +593,15 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                               <span className="text-[10px] text-slate-400 block mt-1 font-semibold leading-none">zł netto</span>
                             </div>
 
-                            {/* Add quantity controls */}
-                            <div className="flex items-center space-x-1">
+                            {/* Add quantity controls — stacked on mobile, inline on desktop */}
+                            <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 sm:gap-1 ml-auto">
                               <input
                                 type="number"
                                 min="1"
                                 max={product.stock}
                                 defaultValue="1"
                                 id={`qty-${product.id}`}
-                                className="w-10 border border-slate-200 rounded-lg text-center text-xs py-1.5 focus:outline-none focus:ring-1 focus:ring-[#1C60B0] bg-white font-semibold"
+                                className="w-14 sm:w-10 border border-slate-200 rounded-lg text-center text-xs py-1.5 focus:outline-none focus:ring-1 focus:ring-[#1C60B0] bg-white font-semibold"
                               />
                               <button
                                 onClick={() => {
@@ -609,7 +609,7 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                                   const qty = parseInt(input?.value || '1', 10);
                                   handleAddToCart(product, qty);
                                 }}
-                                className="bg-[#2D6AD5] hover:bg-[#1E56B8] text-white font-bold py-1.5 px-3.5 rounded-xl text-xs flex items-center space-x-1 transition shadow-sm whitespace-nowrap"
+                                className="w-full sm:w-auto bg-[#2D6AD5] hover:bg-[#1E56B8] text-white font-bold py-2 sm:py-1.5 px-4 sm:px-3.5 rounded-xl text-xs flex items-center justify-center space-x-1 transition shadow-sm whitespace-nowrap"
                               >
                                 <span>+ Dodaj</span>
                               </button>
@@ -655,7 +655,7 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
           />
           
           <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
-            <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col justify-between animate-scale-in">
+            <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col justify-between animate-slide-in-right">
               
               {/* Drawer Header */}
               <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
@@ -834,30 +834,17 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label htmlFor="clientEmail" className="block text-xs font-semibold text-slate-600 mb-1">Adres E-mail *</label>
-                      <input
-                        type="email"
-                        id="clientEmail"
-                        required
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="email@firma.pl"
-                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="clientPhone" className="block text-xs font-semibold text-slate-600 mb-1">Telefon kontaktowy</label>
-                      <input
-                        type="text"
-                        id="clientPhone"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder="Np. +48 500 600 700"
-                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                      />
-                    </div>
+                  <div>
+                    <label htmlFor="clientEmail" className="block text-xs font-semibold text-slate-600 mb-1">Adres E-mail *</label>
+                    <input
+                      type="email"
+                      id="clientEmail"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="email@firma.pl"
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                    />
                   </div>
 
                   <div>
@@ -937,19 +924,25 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
 
       {/* Product Detail Modal */}
       {selectedProductDetails && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6 relative">
+        <div 
+          onClick={() => setSelectedProductDetails(null)} 
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in cursor-pointer"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()} 
+            className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6 relative cursor-default"
+          >
             {/* Close Button */}
             <button 
               onClick={() => setSelectedProductDetails(null)} 
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-655 transition p-2 bg-slate-50 hover:bg-slate-100 rounded-full"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-655 transition p-2 bg-slate-50 hover:bg-slate-100 rounded-full z-10"
             >
               <X size={20} />
             </button>
 
             <div className="grid grid-cols-1 md:grid-cols-12 gap-6 pt-4">
               {/* Image Column */}
-              <div className="md:col-span-5 flex flex-col items-center justify-center bg-slate-50 border border-slate-200 rounded-2xl p-4 h-64 md:h-80 overflow-hidden">
+              <div className="md:col-span-6 flex flex-col items-center justify-center bg-slate-50 border border-slate-200 rounded-2xl p-6 h-80 md:h-[420px] overflow-hidden">
                 <img 
                   src={selectedProductDetails.imageUrl} 
                   alt={selectedProductDetails.name} 
@@ -958,7 +951,7 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
               </div>
 
               {/* Info Column */}
-              <div className="md:col-span-7 flex flex-col justify-between space-y-4">
+              <div className="md:col-span-6 flex flex-col justify-between space-y-4">
                 <div>
                   <div className="flex flex-wrap items-center gap-2 mb-2">
                     <span className="bg-[#1C60B0]/10 text-[#1C60B0] text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider">

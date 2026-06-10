@@ -4,8 +4,12 @@ import nodemailer from 'nodemailer';
 import fs from 'fs';
 import path from 'path';
 
+import os from 'os';
+
+export const dynamic = 'force-dynamic';
+
 // Local backup path for generated CSV files
-const EXPORT_DIR = path.join(process.cwd(), 'orders_export');
+const EXPORT_DIR = path.join(os.tmpdir(), 'orders_export');
 
 export async function POST(request: NextRequest) {
   try {
