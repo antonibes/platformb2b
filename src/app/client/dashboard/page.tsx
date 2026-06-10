@@ -87,7 +87,7 @@ export default function ClientDashboard() {
   };
 
   const handleReorder = (order: Order) => {
-    const targetSlug = 'letnia-promocja-2026';
+    const targetSlug = 'oferta-czerwcowa2026';
     
     const cartItems = order.items.map(item => ({
       id: item.productId,

@@ -35,6 +35,7 @@ export interface Product {
   packaging: string;
   stock: number;
   description?: string;
+  age?: string;
 }
 
 export interface OrderItem {
@@ -167,7 +168,8 @@ function mapProduct(row: any): Product {
     imageUrl: row.image_url,
     packaging: row.packaging,
     stock: parseInt(row.stock, 10),
-    description: row.description || undefined
+    description: row.description || undefined,
+    age: row.age || undefined
   };
 }
 
@@ -347,15 +349,39 @@ export const db = {
       const addedProducts: Product[] = [];
       
       if (sql) {
-        for (let i = 0; i < newProducts.length; i++) {
-          const p = newProducts[i];
+        if (newProducts.length === 0) return [];
+        
+        const values: any[] = [];
+        const placeholders: string[] = [];
+        let index = 1;
+        
+        newProducts.forEach((p, i) => {
           const id = `prod-${Date.now()}-${i}`;
-          await sql`
-            INSERT INTO products (id, offer_id, sku, ean, category, name, price, image_url, packaging, stock, description)
-            VALUES (${id}, ${p.offerId}, ${p.sku}, ${p.ean}, ${p.category || 'Zabawki'}, ${p.name}, ${p.price}, ${p.imageUrl}, ${p.packaging}, ${p.stock}, ${p.description || null})
-          `;
+          placeholders.push(`($${index}, $${index + 1}, $${index + 2}, $${index + 3}, $${index + 4}, $${index + 5}, $${index + 6}, $${index + 7}, $${index + 8}, $${index + 9}, $${index + 10}, $${index + 11})`);
+          values.push(
+            id,
+            p.offerId,
+            p.sku,
+            p.ean,
+            p.category || 'Zabawki',
+            p.name,
+            p.price,
+            p.imageUrl,
+            p.packaging,
+            p.stock,
+            p.description || null,
+            p.age || null
+          );
           addedProducts.push({ ...p, id });
-        }
+          index += 12;
+        });
+        
+        const query = `
+          INSERT INTO products (id, offer_id, sku, ean, category, name, price, image_url, packaging, stock, description, age)
+          VALUES ${placeholders.join(', ')}
+        `;
+        
+        await sql.query(query, values);
         return addedProducts;
       }
       
@@ -380,7 +406,7 @@ export const db = {
               category = ${merged.category || 'Zabawki'}, name = ${merged.name},
               price = ${merged.price}, image_url = ${merged.imageUrl},
               packaging = ${merged.packaging}, stock = ${merged.stock},
-              description = ${merged.description || null}
+              description = ${merged.description || null}, age = ${merged.age || null}
           WHERE id = ${id}
         `;
         return merged;

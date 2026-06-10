@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     const orders = (await db.orders.findMany()).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());

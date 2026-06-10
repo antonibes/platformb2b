@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   ShoppingBag, Search, ArrowLeft, Trash2, Download, Send, 
-  Check, X, CheckCircle2, ChevronRight, Package, ArrowRight, HelpCircle
+  Check, X, CheckCircle2, ChevronRight, Package, ArrowRight, HelpCircle, User
 } from 'lucide-react';
 import canvasConfetti from 'canvas-confetti';
 
@@ -21,6 +21,7 @@ interface Product {
   stock: number;
   discountRate: number;
   description?: string;
+  age?: string;
 }
 
 interface Offer {
@@ -525,12 +526,12 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                     return (
                       <div
                         key={product.id}
-                        className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md hover:border-slate-300 transition-all flex flex-col justify-between"
+                        className="bg-[#F4F7FC] p-3 rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md hover:border-slate-300 transition-all flex flex-col justify-between group"
                       >
-                        {/* Product Image - Large Contain, White BG, Clickable */}
+                        {/* Product Image - Aspect Square Contain, White BG, Clickable */}
                         <div 
                           onClick={() => setSelectedProductDetails(product)}
-                          className="relative h-44 bg-white p-3 flex items-center justify-center border-b border-slate-100 group cursor-pointer"
+                          className="relative w-full aspect-square bg-white p-3 rounded-2xl flex items-center justify-center border border-slate-100 cursor-pointer overflow-hidden shadow-sm"
                         >
                           <img
                             src={product.imageUrl}
@@ -550,61 +551,57 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                           )}
                         </div>
 
-                        {/* Product Info - Smaller Fonts & Compact Padding */}
-                        <div className="p-2.5 flex-grow flex flex-col justify-between text-xs">
+                        {/* Divider line */}
+                        <div className="w-full h-[1px] bg-slate-200/70 my-3" />
+
+                        {/* Product Info */}
+                        <div className="flex-grow flex flex-col justify-between">
                           <div>
-                            <div className="flex flex-wrap gap-1 items-center">
-                              <span className="text-[8px] font-bold tracking-wider text-slate-400 uppercase bg-slate-100 px-1 py-0.5 rounded">
-                                Kod: {product.sku}
-                              </span>
-                            </div>
+                            {/* Full Title (never truncated, uppercase bold) */}
                             <h3 
                               onClick={() => setSelectedProductDetails(product)}
-                              className="font-bold text-slate-800 text-xs mt-1.5 leading-tight hover:text-[#1C60B0] transition-colors cursor-pointer"
+                              className="font-extrabold text-slate-800 uppercase leading-snug text-xs hover:text-[#1C60B0] transition-colors cursor-pointer mb-2.5 break-words"
                             >
                               {product.name}
                             </h3>
                             
-                            <div className="mt-2 space-y-0.5 text-[10px] text-slate-500">
-                              <div className="flex justify-between">
-                                <span>EAN:</span>
-                                <span className="font-mono text-slate-700 font-medium">{product.ean}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>PCB:</span>
-                                <span className="font-medium text-slate-700">{product.packaging}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Dostępne:</span>
-                                <span className="font-medium text-slate-700">{product.stock} szt.</span>
-                              </div>
+                            {/* Three Pills Row (EAN, Wiek, PCB) */}
+                            <div className="flex flex-wrap gap-1.5 mb-3">
+                              <span className="bg-[#EDF2F9] text-[#4F709C] px-2.5 py-0.5 rounded-lg text-[10px] font-semibold border border-blue-50/50">
+                                {product.ean}
+                              </span>
+                              <span className="bg-[#EDF2F9] text-[#4F709C] px-2.5 py-0.5 rounded-lg text-[10px] font-semibold border border-blue-50/50 flex items-center gap-1">
+                                <User size={10} className="inline text-[#4F709C]" /> {product.age || '3+'}
+                              </span>
+                              <span className="bg-[#EDF2F9] text-[#4F709C] px-2.5 py-0.5 rounded-lg text-[10px] font-semibold border border-blue-50/50">
+                                {product.packaging.includes('Karton:') ? 'PCB ' + product.packaging.replace(/[^\d]/g, '') : product.packaging}
+                              </span>
                             </div>
                           </div>
 
                           {/* Pricing and Cart button */}
-                          <div className="mt-2.5 pt-2 border-t border-slate-100">
-                            <div className="flex items-baseline justify-between mb-2">
-                              <div>
-                                {product.discountRate > 0 && (
-                                  <div className="text-[9px] text-slate-400 line-through">
-                                    {product.originalPrice.toFixed(2)} PLN
-                                  </div>
-                                )}
-                                <div className="text-sm font-black text-[#CD2628]">
-                                  {product.price.toFixed(2)} <span className="text-[9px] font-semibold text-slate-500">PLN netto</span>
-                                </div>
-                              </div>
+                          <div className="pt-2 border-t border-slate-100/50 flex items-center justify-between mt-auto">
+                            <div>
+                              {product.discountRate > 0 && (
+                                <span className="text-[10px] text-slate-400 line-through block leading-none mb-0.5">
+                                  {product.originalPrice.toFixed(2).replace('.', ',')} zł
+                                </span>
+                              )}
+                              <span className="text-lg font-black text-[#CD2628] leading-none">
+                                {product.price.toFixed(2).replace('.', ',')}
+                              </span>
+                              <span className="text-[10px] text-slate-400 block mt-1 font-semibold leading-none">zł netto</span>
                             </div>
 
                             {/* Add quantity controls */}
-                            <div className="flex space-x-1">
+                            <div className="flex items-center space-x-1">
                               <input
                                 type="number"
                                 min="1"
                                 max={product.stock}
                                 defaultValue="1"
                                 id={`qty-${product.id}`}
-                                className="w-10 border border-slate-200 rounded-lg text-center text-xs py-0.5 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]"
+                                className="w-10 border border-slate-200 rounded-lg text-center text-xs py-1.5 focus:outline-none focus:ring-1 focus:ring-[#1C60B0] bg-white font-semibold"
                               />
                               <button
                                 onClick={() => {
@@ -612,9 +609,9 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                                   const qty = parseInt(input?.value || '1', 10);
                                   handleAddToCart(product, qty);
                                 }}
-                                className="flex-grow bg-[#1C60B0] hover:bg-[#1A54A5] text-white rounded-lg py-1 px-1.5 text-[10px] font-bold flex items-center justify-center space-x-1 transition shadow-sm"
+                                className="bg-[#2D6AD5] hover:bg-[#1E56B8] text-white font-bold py-1.5 px-3.5 rounded-xl text-xs flex items-center space-x-1 transition shadow-sm whitespace-nowrap"
                               >
-                                <span>+ dodaj</span>
+                                <span>+ Dodaj</span>
                               </button>
                             </div>
                           </div>
@@ -980,6 +977,10 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                     <div>
                       <span className="text-slate-400 block uppercase tracking-wider text-[9px] font-bold">Kod SKU:</span>
                       <span className="font-mono text-slate-700 font-bold">{selectedProductDetails.sku}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block uppercase tracking-wider text-[9px] font-bold">Rekomendowany wiek:</span>
+                      <span className="text-slate-700 font-bold">{selectedProductDetails.age || '3+'}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 block uppercase tracking-wider text-[9px] font-bold">Pakowanie zbiorcze:</span>

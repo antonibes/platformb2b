@@ -51,7 +51,7 @@ export default function PortalPage() {
 
   const handleGuestAccess = () => {
     // Redirect immediately to default catalog page without asking for details
-    router.push('/offer/letnia-promocja-2026');
+    router.push('/offer/oferta-czerwcowa2026');
   };
 
   return (

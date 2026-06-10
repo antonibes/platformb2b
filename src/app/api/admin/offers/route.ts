@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import * as XLSX from 'xlsx';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     const offers = await db.offers.findMany();
@@ -101,6 +103,22 @@ export async function POST(request: NextRequest) {
       const rawImage = row.image || row.zdjecie || row.zdjęcie || row.image_url || row.ImageUrl;
       const imageUrl = rawImage || `https://images.unsplash.com/photo-1596464716127-f2a82984de30?w=500&auto=format&fit=crop&q=60`;
 
+      // Parse age
+      const rawAge = row.age || row.wiek || row.Wiek || row.Age || '';
+      let ageVal = '3+';
+      if (rawAge !== undefined && rawAge !== '') {
+        const parsedAge = parseInt(String(rawAge).trim(), 10);
+        if (!isNaN(parsedAge)) {
+          if (parsedAge >= 12) {
+            ageVal = `${parsedAge}m+`;
+          } else {
+            ageVal = `${parsedAge}+`;
+          }
+        } else {
+          ageVal = String(rawAge).trim();
+        }
+      }
+
       parsedProducts.push({
         offerId: newOffer.id,
         sku: String(sku).trim(),
@@ -109,7 +127,8 @@ export async function POST(request: NextRequest) {
         price: parseFloat(priceVal.toFixed(2)),
         imageUrl: String(imageUrl).trim(),
         packaging: String(packaging).trim(),
-        stock: stockVal
+        stock: stockVal,
+        age: ageVal
       });
     });
 
