@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<!-- saved from url=(0027)https://askato.pl/admin.php -->
+<html lang="pl"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel administracyjny — Askato</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #f7f8fa;
+    --surface:  #ffffff;
+    --border:   #e2e6ea;
+    --accent:   #2563eb;
+    --accent-h: #1d4ed8;
+    --success:  #16a34a;
+    --error:    #dc2626;
+    --text:     #1a1d23;
+    --muted:    #6b7280;
+    --radius:   10px;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 40px;
+    width: 100%;
+    max-width: 480px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.06);
+  }
+
+  .logo {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+
+  .subtitle {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 32px;
+  }
+
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+
+  input[type="password"],
+  input[type="file"] {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    font-size: 15px;
+    color: var(--text);
+    background: var(--bg);
+    transition: border-color .15s;
+    margin-bottom: 20px;
+  }
+
+  input[type="password"]:focus,
+  input[type="file"]:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: #fff;
+  }
+
+  input[type="file"] {
+    padding: 8px 12px;
+    cursor: pointer;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 12px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 7px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s;
+  }
+
+  .btn:hover { background: var(--accent-h); }
+
+  .alert {
+    padding: 12px 16px;
+    border-radius: 7px;
+    font-size: 14px;
+    margin-bottom: 24px;
+    line-height: 1.5;
+  }
+
+  .alert.success { background: #f0fdf4; border: 1px solid #bbf7d0; color: var(--success); }
+  .alert.error   { background: #fef2f2; border: 1px solid #fecaca; color: var(--error); }
+
+  .file-info {
+    background: #f0f7ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 7px;
+    padding: 14px 16px;
+    margin-bottom: 28px;
+    font-size: 13px;
+    color: #1e40af;
+    line-height: 1.8;
+  }
+
+  .file-info strong { display: block; font-size: 14px; margin-bottom: 4px; color: var(--accent); }
+
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 28px 0;
+  }
+
+  .logout {
+    display: block;
+    text-align: center;
+    margin-top: 20px;
+    font-size: 13px;
+    color: var(--muted);
+    text-decoration: none;
+  }
+
+  .logout:hover { color: var(--error); }
+
+  .hint {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: -14px;
+    margin-bottom: 20px;
+  }
+
+  .preview-link {
+    display: inline-block;
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .preview-link:hover { text-decoration: underline; }
+</style>
+</head>
+<body cz-shortcut-listen="true">
+<div class="card">
+
+  <div class="logo">Askato</div>
+  <div class="subtitle">Panel aktualizacji oferty</div>
+
+      <div class="alert success">Oferta została zaktualizowana! Plik b2b.html został podmieniony.</div>
+  
+  
+    <!-- PANEL PO ZALOGOWANIU -->
+
+          <div class="file-info">
+        <strong>Aktualna oferta (b2b.html)</strong>
+        Rozmiar: 5486.9 KB<br>
+        Ostatnia aktualizacja: 10.06.2026, 12:52      </div>
+    
+    <form method="post" enctype="multipart/form-data">
+      <label for="offer_file">Nowy plik oferty (.html)</label>
+      <input type="file" id="offer_file" name="offer_file" accept=".html,text/html" required="">
+      <p class="hint">Maksymalny rozmiar: 20 MB. Przed podmianą powstanie automatyczna kopia zapasowa.</p>
+      <button type="submit" class="btn">Wgraj i podmień ofertę</button>
+    </form>
+
+    <hr class="divider">
+
+    <a href="https://askato.pl/b2b.html" target="_blank" class="preview-link">→ Podejrzyj ofertę na stronie</a>
+
+    <a href="https://askato.pl/admin.php?logout" class="logout">Wyloguj się</a>
+
+  
+</div>
+
+</body></html>
