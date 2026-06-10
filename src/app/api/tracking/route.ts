@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Brakujące parametry śledzenia' }, { status: 400 });
     }
 
-    const event = db.tracking.create({
+    const event = await db.tracking.create({
       deviceId,
       userId: userId || null,
       eventType,

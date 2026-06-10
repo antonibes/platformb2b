@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     const totalValue = items.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
 
     // Save order in database
-    const order = db.orders.create({
+    const order = await db.orders.create({
       userId: userId || null,
       guestDeviceId: guestDeviceId || null,
       clientName,

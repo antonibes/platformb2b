@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Brak parametru offerId' }, { status: 400 });
     }
 
-    const products = db.products.findByOfferId(offerId);
+    const products = await db.products.findByOfferId(offerId);
     return NextResponse.json({ products });
   } catch (error) {
     console.error('Error fetching offer products:', error);
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const updated = db.products.update(productId, cleanUpdates);
+    const updated = await db.products.update(productId, cleanUpdates);
     if (!updated) {
       return NextResponse.json({ error: 'Nie znaleziono produktu' }, { status: 404 });
     }

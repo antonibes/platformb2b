@@ -4,15 +4,17 @@ import * as XLSX from 'xlsx';
 
 export async function GET() {
   try {
-    const offers = db.offers.findMany();
+    const offers = await db.offers.findMany();
     // Attach product counts to each offer
-    const offersWithCounts = offers.map(o => {
-      const prods = db.products.findByOfferId(o.id);
-      return {
-        ...o,
-        productCount: prods.length
-      };
-    });
+    const offersWithCounts = await Promise.all(
+      offers.map(async (o) => {
+        const prods = await db.products.findByOfferId(o.id);
+        return {
+          ...o,
+          productCount: prods.length
+        };
+      })
+    );
     return NextResponse.json({ offers: offersWithCounts });
   } catch (error) {
     console.error('Error fetching offers list:', error);
@@ -35,7 +37,7 @@ export async function POST(request: NextRequest) {
     const cleanedSlug = slug.toLowerCase().trim().replace(/[^a-z0-9-_]/g, '-');
 
     // Check if slug already exists
-    const existing = db.offers.findBySlug(cleanedSlug);
+    const existing = await db.offers.findBySlug(cleanedSlug);
     if (existing) {
       return NextResponse.json({ error: `Oferta o adresie /offer/${cleanedSlug} już istnieje` }, { status: 400 });
     }
@@ -55,7 +57,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the offer
-    const newOffer = db.offers.create({
+    const newOffer = await db.offers.create({
       title,
       slug: cleanedSlug,
       isActive: true
@@ -112,7 +114,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Bulk save products to db
-    const createdProducts = db.products.createMany(parsedProducts);
+    const createdProducts = await db.products.createMany(parsedProducts);
 
     return NextResponse.json({
       success: true,

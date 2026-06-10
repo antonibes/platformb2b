@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 
 export async function GET() {
   try {
-    const orders = db.orders.findMany().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const orders = (await db.orders.findMany()).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     return NextResponse.json({ orders });
   } catch (error) {
     console.error('Error fetching admin orders:', error);
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Brakujące parametry (orderId lub status)' }, { status: 400 });
     }
 
-    const updated = db.orders.updateStatus(orderId, status);
+    const updated = await db.orders.updateStatus(orderId, status);
     if (!updated) {
       return NextResponse.json({ error: 'Zamówienie nie istnieje' }, { status: 404 });
     }

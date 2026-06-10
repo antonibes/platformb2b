@@ -11,7 +11,7 @@ export async function GET(
     const userId = searchParams.get('userId');
 
     // Find offer by slug
-    const offer = db.offers.findBySlug(slug);
+    const offer = await db.offers.findBySlug(slug);
     if (!offer) {
       return NextResponse.json({ error: 'Oferta nie została znaleziona' }, { status: 404 });
     }
@@ -21,12 +21,12 @@ export async function GET(
     }
 
     // Get products for this offer
-    const products = db.products.findByOfferId(offer.id);
+    const products = await db.products.findByOfferId(offer.id);
 
     // Apply customer discount if user is logged in
     let discountRate = 0;
     if (userId) {
-      const user = db.users.findById(userId);
+      const user = await db.users.findById(userId);
       if (user && user.role === 'client') {
         discountRate = user.discountRate;
       }

@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { neon } from '@neondatabase/serverless';
 
 // Define database file path for fallback local JSON storage
 const DB_FILE = path.join(process.cwd(), 'db.json');
@@ -83,110 +84,36 @@ const DEFAULT_DB: DatabaseSchema = {
     {
       id: 'admin-1',
       email: 'admin@askato.pl',
-      passwordHash: 'admin123', // Cleartext for MVP testing simple auth
+      passwordHash: 'admin123',
       companyName: 'Askato Sp. z o.o.',
       nip: '1234567890',
       discountRate: 0,
       role: 'admin',
-    },
-    {
-      id: 'client-1',
-      email: 'hurtownik@example.com',
-      passwordHash: 'client123',
-      companyName: 'Zabawki i Radość S.A.',
-      nip: '9876543210',
-      discountRate: 0.15, // 15% discount
-      role: 'client',
-    },
-    {
-      id: 'client-2',
-      email: 'sklep@dladzieci.pl',
-      passwordHash: 'sklep123',
-      companyName: 'Świat Malucha P.P.H.U.',
-      nip: '5556667778',
-      discountRate: 0.10, // 10% discount
-      role: 'client',
     }
   ],
-  offers: [
-    {
-      id: 'offer-1',
-      title: 'Letnia Promocja 2026 - Zabawki Ogrodowe',
-      slug: 'letnia-promocja-2026',
-      isActive: true,
-      createdAt: new Date().toISOString(),
-    }
-  ],
-  products: [
-    {
-      id: 'prod-1',
-      offerId: 'offer-1',
-      sku: 'ASK-BAS-001',
-      ean: '5901234567890',
-      name: 'Basen Rozporowy Ogrodowy 305x76 cm',
-      price: 189.90,
-      imageUrl: 'https://images.unsplash.com/photo-1576016770956-debb63d900bb?w=500&auto=format&fit=crop&q=60',
-      packaging: 'opak. 1 szt.',
-      stock: 45,
-    },
-    {
-      id: 'prod-2',
-      offerId: 'offer-1',
-      sku: 'ASK-PIAS-002',
-      ean: '5901234567891',
-      name: 'Piaskownica Drewniana Zamykana z Ławkami',
-      price: 149.00,
-      imageUrl: 'https://images.unsplash.com/photo-1596464716127-f2a82984de30?w=500&auto=format&fit=crop&q=60',
-      packaging: 'opak. 1 szt.',
-      stock: 30,
-    },
-    {
-      id: 'prod-3',
-      offerId: 'offer-1',
-      sku: 'ASK-PIL-003',
-      ean: '5901234567892',
-      name: 'Piłka Plażowa Askato Jumbo 60cm',
-      price: 12.50,
-      imageUrl: 'https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=500&auto=format&fit=crop&q=60',
-      packaging: 'opak. 12 szt.',
-      stock: 500,
-    },
-    {
-      id: 'prod-4',
-      offerId: 'offer-1',
-      sku: 'ASK-KOLO-004',
-      ean: '5901234567893',
-      name: 'Koło do Pływania z Uchwytami 90cm',
-      price: 19.99,
-      imageUrl: 'https://images.unsplash.com/photo-1562184552-997c461abbe6?w=500&auto=format&fit=crop&q=60',
-      packaging: 'opak. 6 szt.',
-      stock: 250,
-    },
-    {
-      id: 'prod-5',
-      offerId: 'offer-1',
-      sku: 'ASK-REK-005',
-      ean: '5901234567894',
-      name: 'Rękawki do Nauki Pływania Askato Kids',
-      price: 8.90,
-      imageUrl: 'https://images.unsplash.com/photo-1544816155-12df9643f363?w=500&auto=format&fit=crop&q=60',
-      packaging: 'opak. 24 szt.',
-      stock: 800,
-    }
-  ],
+  offers: [],
+  products: [],
   orders: [],
   trackingEvents: []
 };
 
-// Ensure database file exists
+// Check if we are connected to Postgres
+const getSql = () => {
+  const url = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  if (url) {
+    return neon(url);
+  }
+  return null;
+};
+
+// Fallback JSON DB methods
 function initializeDb() {
   if (!fs.existsSync(DB_FILE)) {
     fs.writeFileSync(DB_FILE, JSON.stringify(DEFAULT_DB, null, 2), 'utf-8');
   }
 }
 
-// Read database
-export function readDb(): DatabaseSchema {
+function readDb(): DatabaseSchema {
   initializeDb();
   try {
     const data = fs.readFileSync(DB_FILE, 'utf-8');
@@ -197,8 +124,7 @@ export function readDb(): DatabaseSchema {
   }
 }
 
-// Write database
-export function writeDb(data: DatabaseSchema): void {
+function writeDb(data: DatabaseSchema): void {
   try {
     fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
   } catch (error) {
@@ -206,20 +132,132 @@ export function writeDb(data: DatabaseSchema): void {
   }
 }
 
-// Helper query functions
+// SQL Mapping Helpers
+function mapUser(row: any): B2BUser {
+  return {
+    id: row.id,
+    email: row.email,
+    passwordHash: row.password_hash,
+    companyName: row.company_name,
+    nip: row.nip,
+    discountRate: parseFloat(row.discount_rate),
+    role: row.role as 'admin' | 'client'
+  };
+}
+
+function mapOffer(row: any): Offer {
+  return {
+    id: row.id,
+    title: row.title,
+    slug: row.slug,
+    isActive: !!row.is_active,
+    createdAt: new Date(row.created_at).toISOString()
+  };
+}
+
+function mapProduct(row: any): Product {
+  return {
+    id: row.id,
+    offerId: row.offer_id,
+    sku: row.sku,
+    ean: row.ean,
+    category: row.category || undefined,
+    name: row.name,
+    price: parseFloat(row.price),
+    imageUrl: row.image_url,
+    packaging: row.packaging,
+    stock: parseInt(row.stock, 10),
+    description: row.description || undefined
+  };
+}
+
+function mapOrder(row: any): Order {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    guestDeviceId: row.guest_device_id,
+    clientName: row.client_name,
+    clientNip: row.client_nip,
+    clientEmail: row.client_email,
+    clientPhone: row.client_phone,
+    comments: row.comments || '',
+    totalValue: parseFloat(row.total_value),
+    status: row.status as Order['status'],
+    items: typeof row.items === 'string' ? JSON.parse(row.items) : row.items,
+    createdAt: new Date(row.created_at).toISOString()
+  };
+}
+
+function mapTrackingEvent(row: any): TrackingEvent {
+  return {
+    id: row.id,
+    deviceId: row.device_id,
+    userId: row.user_id,
+    eventType: row.event_type as TrackingEvent['eventType'],
+    offerSlug: row.offer_slug,
+    payload: typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload,
+    createdAt: new Date(row.created_at).toISOString()
+  };
+}
+
+// Unified Async Database API
 export const db = {
   users: {
-    findMany: () => readDb().users,
-    findByEmail: (email: string) => readDb().users.find(u => u.email.toLowerCase() === email.toLowerCase()),
-    findById: (id: string) => readDb().users.find(u => u.id === id),
-    create: (user: Omit<B2BUser, 'id'>) => {
+    findMany: async (): Promise<B2BUser[]> => {
+      const sql = getSql();
+      if (sql) {
+        const rows = await sql`SELECT * FROM b2b_users`;
+        return rows.map(mapUser);
+      }
+      return readDb().users;
+    },
+    findByEmail: async (email: string): Promise<B2BUser | null> => {
+      const sql = getSql();
+      if (sql) {
+        const rows = await sql`SELECT * FROM b2b_users WHERE LOWER(email) = LOWER(${email}) LIMIT 1`;
+        return rows.length > 0 ? mapUser(rows[0]) : null;
+      }
+      return readDb().users.find(u => u.email.toLowerCase() === email.toLowerCase()) || null;
+    },
+    findById: async (id: string): Promise<B2BUser | null> => {
+      const sql = getSql();
+      if (sql) {
+        const rows = await sql`SELECT * FROM b2b_users WHERE id = ${id} LIMIT 1`;
+        return rows.length > 0 ? mapUser(rows[0]) : null;
+      }
+      return readDb().users.find(u => u.id === id) || null;
+    },
+    create: async (user: Omit<B2BUser, 'id'>): Promise<B2BUser> => {
+      const id = `user-${Date.now()}`;
+      const sql = getSql();
+      if (sql) {
+        await sql`
+          INSERT INTO b2b_users (id, email, password_hash, company_name, nip, discount_rate, role)
+          VALUES (${id}, ${user.email}, ${user.passwordHash}, ${user.companyName}, ${user.nip}, ${user.discountRate}, ${user.role})
+        `;
+        return { ...user, id };
+      }
       const current = readDb();
-      const newUser = { ...user, id: `user-${Date.now()}` };
+      const newUser = { ...user, id };
       current.users.push(newUser);
       writeDb(current);
       return newUser;
     },
-    update: (id: string, updates: Partial<B2BUser>) => {
+    update: async (id: string, updates: Partial<B2BUser>): Promise<B2BUser | null> => {
+      const sql = getSql();
+      if (sql) {
+        const existing = await db.users.findById(id);
+        if (!existing) return null;
+        const merged = { ...existing, ...updates };
+        await sql`
+          UPDATE b2b_users 
+          SET email = ${merged.email}, password_hash = ${merged.passwordHash}, 
+              company_name = ${merged.companyName}, nip = ${merged.nip}, 
+              discount_rate = ${merged.discountRate}, role = ${merged.role}
+          WHERE id = ${id}
+        `;
+        return merged;
+      }
       const current = readDb();
       const index = current.users.findIndex(u => u.id === id);
       if (index !== -1) {
@@ -231,20 +269,52 @@ export const db = {
     }
   },
   offers: {
-    findMany: () => readDb().offers,
-    findBySlug: (slug: string) => readDb().offers.find(o => o.slug === slug),
-    create: (offer: Omit<Offer, 'id' | 'createdAt'>) => {
+    findMany: async (): Promise<Offer[]> => {
+      const sql = getSql();
+      if (sql) {
+        const rows = await sql`SELECT * FROM offers ORDER BY created_at DESC`;
+        return rows.map(mapOffer);
+      }
+      return readDb().offers;
+    },
+    findBySlug: async (slug: string): Promise<Offer | null> => {
+      const sql = getSql();
+      if (sql) {
+        const rows = await sql`SELECT * FROM offers WHERE slug = ${slug} LIMIT 1`;
+        return rows.length > 0 ? mapOffer(rows[0]) : null;
+      }
+      return readDb().offers.find(o => o.slug === slug) || null;
+    },
+    create: async (offer: Omit<Offer, 'id' | 'createdAt'>): Promise<Offer> => {
+      const id = `offer-${Date.now()}`;
+      const createdAt = new Date().toISOString();
+      const sql = getSql();
+      if (sql) {
+        await sql`
+          INSERT INTO offers (id, title, slug, is_active, created_at)
+          VALUES (${id}, ${offer.title}, ${offer.slug}, ${offer.isActive}, ${new Date(createdAt)})
+        `;
+        return { ...offer, id, createdAt };
+      }
       const current = readDb();
-      const newOffer = { 
-        ...offer, 
-        id: `offer-${Date.now()}`,
-        createdAt: new Date().toISOString()
-      };
+      const newOffer = { ...offer, id, createdAt };
       current.offers.push(newOffer);
       writeDb(current);
       return newOffer;
     },
-    update: (id: string, updates: Partial<Offer>) => {
+    update: async (id: string, updates: Partial<Offer>): Promise<Offer | null> => {
+      const sql = getSql();
+      if (sql) {
+        const existing = await sql`SELECT * FROM offers WHERE id = ${id} LIMIT 1`;
+        if (existing.length === 0) return null;
+        const merged = { ...mapOffer(existing[0]), ...updates };
+        await sql`
+          UPDATE offers 
+          SET title = ${merged.title}, slug = ${merged.slug}, is_active = ${merged.isActive}
+          WHERE id = ${id}
+        `;
+        return merged;
+      }
       const current = readDb();
       const index = current.offers.findIndex(o => o.id === id);
       if (index !== -1) {
@@ -256,11 +326,40 @@ export const db = {
     }
   },
   products: {
-    findMany: () => readDb().products,
-    findByOfferId: (offerId: string) => readDb().products.filter(p => p.offerId === offerId),
-    createMany: (newProducts: Omit<Product, 'id'>[]) => {
-      const current = readDb();
+    findMany: async (): Promise<Product[]> => {
+      const sql = getSql();
+      if (sql) {
+        const rows = await sql`SELECT * FROM products`;
+        return rows.map(mapProduct);
+      }
+      return readDb().products;
+    },
+    findByOfferId: async (offerId: string): Promise<Product[]> => {
+      const sql = getSql();
+      if (sql) {
+        const rows = await sql`SELECT * FROM products WHERE offer_id = ${offerId} ORDER BY name ASC`;
+        return rows.map(mapProduct);
+      }
+      return readDb().products.filter(p => p.offerId === offerId);
+    },
+    createMany: async (newProducts: Omit<Product, 'id'>[]): Promise<Product[]> => {
+      const sql = getSql();
       const addedProducts: Product[] = [];
+      
+      if (sql) {
+        for (let i = 0; i < newProducts.length; i++) {
+          const p = newProducts[i];
+          const id = `prod-${Date.now()}-${i}`;
+          await sql`
+            INSERT INTO products (id, offer_id, sku, ean, category, name, price, image_url, packaging, stock, description)
+            VALUES (${id}, ${p.offerId}, ${p.sku}, ${p.ean}, ${p.category || 'Zabawki'}, ${p.name}, ${p.price}, ${p.imageUrl}, ${p.packaging}, ${p.stock}, ${p.description || null})
+          `;
+          addedProducts.push({ ...p, id });
+        }
+        return addedProducts;
+      }
+      
+      const current = readDb();
       newProducts.forEach((p, index) => {
         const prod = { ...p, id: `prod-${Date.now()}-${index}` };
         current.products.push(prod);
@@ -269,7 +368,23 @@ export const db = {
       writeDb(current);
       return addedProducts;
     },
-    update: (id: string, updates: Partial<Product>) => {
+    update: async (id: string, updates: Partial<Product>): Promise<Product | null> => {
+      const sql = getSql();
+      if (sql) {
+        const rows = await sql`SELECT * FROM products WHERE id = ${id} LIMIT 1`;
+        if (rows.length === 0) return null;
+        const merged = { ...mapProduct(rows[0]), ...updates };
+        await sql`
+          UPDATE products
+          SET offer_id = ${merged.offerId}, sku = ${merged.sku}, ean = ${merged.ean},
+              category = ${merged.category || 'Zabawki'}, name = ${merged.name},
+              price = ${merged.price}, image_url = ${merged.imageUrl},
+              packaging = ${merged.packaging}, stock = ${merged.stock},
+              description = ${merged.description || null}
+          WHERE id = ${id}
+        `;
+        return merged;
+      }
       const current = readDb();
       const index = current.products.findIndex(p => p.id === id);
       if (index !== -1) {
@@ -279,28 +394,69 @@ export const db = {
       }
       return null;
     },
-    deleteByOfferId: (offerId: string) => {
+    deleteByOfferId: async (offerId: string): Promise<void> => {
+      const sql = getSql();
+      if (sql) {
+        await sql`DELETE FROM products WHERE offer_id = ${offerId}`;
+        return;
+      }
       const current = readDb();
       current.products = current.products.filter(p => p.offerId !== offerId);
       writeDb(current);
     }
   },
   orders: {
-    findMany: () => readDb().orders,
-    findByUserId: (userId: string) => readDb().orders.filter(o => o.userId === userId),
-    create: (order: Omit<Order, 'id' | 'createdAt' | 'status'>) => {
+    findMany: async (): Promise<Order[]> => {
+      const sql = getSql();
+      if (sql) {
+        const rows = await sql`SELECT * FROM orders ORDER BY created_at DESC`;
+        return rows.map(mapOrder);
+      }
+      return readDb().orders;
+    },
+    findByUserId: async (userId: string): Promise<Order[]> => {
+      const sql = getSql();
+      if (sql) {
+        const rows = await sql`SELECT * FROM orders WHERE user_id = ${userId} ORDER BY created_at DESC`;
+        return rows.map(mapOrder);
+      }
+      return readDb().orders.filter(o => o.userId === userId);
+    },
+    create: async (order: Omit<Order, 'id' | 'createdAt' | 'status'>): Promise<Order> => {
+      const id = `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      const createdAt = new Date().toISOString();
+      const status: Order['status'] = 'new';
+      const sql = getSql();
+      
+      if (sql) {
+        await sql`
+          INSERT INTO orders (id, user_id, guest_device_id, client_name, client_nip, client_email, client_phone, comments, total_value, status, items, created_at)
+          VALUES (${id}, ${order.userId}, ${order.guestDeviceId}, ${order.clientName}, ${order.clientNip}, ${order.clientEmail}, ${order.clientPhone}, ${order.comments}, ${order.totalValue}, ${status}, ${JSON.stringify(order.items)}, ${new Date(createdAt)})
+        `;
+        return { ...order, id, createdAt, status };
+      }
+      
       const current = readDb();
       const newOrder: Order = {
         ...order,
-        id: `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        status: 'new',
-        createdAt: new Date().toISOString()
+        id,
+        status,
+        createdAt
       };
       current.orders.push(newOrder);
       writeDb(current);
       return newOrder;
     },
-    updateStatus: (id: string, status: Order['status']) => {
+    updateStatus: async (id: string, status: Order['status']): Promise<Order | null> => {
+      const sql = getSql();
+      if (sql) {
+        const rows = await sql`SELECT * FROM orders WHERE id = ${id} LIMIT 1`;
+        if (rows.length === 0) return null;
+        const merged = mapOrder(rows[0]);
+        merged.status = status;
+        await sql`UPDATE orders SET status = ${status} WHERE id = ${id}`;
+        return merged;
+      }
       const current = readDb();
       const index = current.orders.findIndex(o => o.id === id);
       if (index !== -1) {
@@ -312,13 +468,32 @@ export const db = {
     }
   },
   tracking: {
-    findMany: () => readDb().trackingEvents,
-    create: (event: Omit<TrackingEvent, 'id' | 'createdAt'>) => {
+    findMany: async (): Promise<TrackingEvent[]> => {
+      const sql = getSql();
+      if (sql) {
+        const rows = await sql`SELECT * FROM tracking_events ORDER BY created_at DESC`;
+        return rows.map(mapTrackingEvent);
+      }
+      return readDb().trackingEvents;
+    },
+    create: async (event: Omit<TrackingEvent, 'id' | 'createdAt'>): Promise<TrackingEvent> => {
+      const id = `evt-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      const createdAt = new Date().toISOString();
+      const sql = getSql();
+      
+      if (sql) {
+        await sql`
+          INSERT INTO tracking_events (id, device_id, user_id, event_type, offer_slug, payload, created_at)
+          VALUES (${id}, ${event.deviceId}, ${event.userId}, ${event.eventType}, ${event.offerSlug}, ${JSON.stringify(event.payload)}, ${new Date(createdAt)})
+        `;
+        return { ...event, id, createdAt };
+      }
+      
       const current = readDb();
       const newEvent: TrackingEvent = {
         ...event,
-        id: `evt-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        createdAt: new Date().toISOString()
+        id,
+        createdAt
       };
       current.trackingEvents.push(newEvent);
       writeDb(current);

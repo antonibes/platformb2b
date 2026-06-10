@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 
 export async function GET() {
   try {
-    const clients = db.users.findMany().filter(u => u.role === 'client');
+    const clients = (await db.users.findMany()).filter(u => u.role === 'client');
     return NextResponse.json({ clients });
   } catch (error) {
     console.error('Error fetching clients:', error);
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Nieprawidłowa wartość rabatu (musi być od 0 do 1)' }, { status: 400 });
     }
 
-    const updated = db.users.update(clientId, { discountRate: rate });
+    const updated = await db.users.update(clientId, { discountRate: rate });
     if (!updated) {
       return NextResponse.json({ error: 'Nie znaleziono klienta' }, { status: 404 });
     }

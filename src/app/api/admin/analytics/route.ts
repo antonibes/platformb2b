@@ -3,8 +3,8 @@ import { db } from '@/lib/db';
 
 export async function GET() {
   try {
-    const events = db.tracking.findMany();
-    const orders = db.orders.findMany();
+    const events = await db.tracking.findMany();
+    const orders = await db.orders.findMany();
 
     // 1. Basic counts
     const totalViews = events.filter(e => e.eventType === 'page_view').length;
@@ -83,6 +83,8 @@ export async function GET() {
     }).sort((a, b) => new Date(b.lastActive).getTime() - new Date(a.lastActive).getTime()).slice(0, 10);
 
     // 6. Recent activity timeline (last 20 events)
+    const usersList = await db.users.findMany();
+    const userMap = new Map(usersList.map(u => [u.id, u]));
     const recentEvents = [...events]
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 20)
@@ -90,7 +92,7 @@ export async function GET() {
         // Resolve user email if logged in
         let userIdentity = 'Niezalogowany';
         if (e.userId) {
-          const user = db.users.findById(e.userId);
+          const user = userMap.get(e.userId);
           if (user) userIdentity = `${user.companyName} (${user.email})`;
         }
         return {
