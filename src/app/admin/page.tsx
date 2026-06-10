@@ -91,7 +91,7 @@ interface Product {
 export default function AdminDashboard() {
   const router = useRouter();
   const [admin, setAdmin] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'offers' | 'orders' | 'clients'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'offers' | 'orders' | 'clients' | 'stats'>('overview');
   
   // Data States
   const [offers, setOffers] = useState<Offer[]>([]);
@@ -125,6 +125,10 @@ export default function AdminDashboard() {
   const [productsLoading, setProductsLoading] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editingClient, setEditingClient] = useState<ClientUser | null>(null);
+  const [showAddClient, setShowAddClient] = useState(false);
+  const [showAddProduct, setShowAddProduct] = useState(false);
+  const [newClient, setNewClient] = useState({ email: '', password: '', companyName: '', nip: '', discountRate: '0' });
+  const [newProduct, setNewProduct] = useState({ name: '', sku: '', ean: '', category: '', price: '', stock: '100', packaging: 'opak. 1 szt.', imageUrl: '', age: '3+', description: '' });
 
   // 1. Session check
   useEffect(() => {
@@ -323,6 +327,55 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleDeleteOrder = async (orderId: string) => {
+    if (!confirm(`Usunąć zamówienie ${orderId}?`)) return;
+    try {
+      await fetch('/api/admin/orders', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderId }) });
+      setOrders(prev => prev.filter(o => o.id !== orderId));
+    } catch { alert('Błąd usuwania zamówienia'); }
+  };
+
+  const handleDeleteClient = async (clientId: string) => {
+    if (!confirm('Usunąć tego klienta?')) return;
+    try {
+      await fetch('/api/admin/clients', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId }) });
+      setClients(prev => prev.filter(c => c.id !== clientId));
+    } catch { alert('Błąd usuwania klienta'); }
+  };
+
+  const handleCreateClient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/admin/clients', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create', ...newClient, discountRate: parseFloat(newClient.discountRate) / 100 }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setClients(prev => [...prev, data.client]);
+      setNewClient({ email: '', password: '', companyName: '', nip: '', discountRate: '0' });
+      setShowAddClient(false);
+    } catch (err: any) { alert(`Błąd: ${err.message}`); }
+  };
+
+  const handleDeleteProduct = async (productId: string) => {
+    if (!confirm('Usunąć ten produkt z oferty?')) return;
+    try {
+      await fetch('/api/admin/products', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ productId }) });
+      setOfferProducts(prev => prev.filter(p => p.id !== productId));
+    } catch { alert('Błąd usuwania produktu'); }
+  };
+
+  const handleAddProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedOfferForEdit) return;
+    try {
+      const res = await fetch('/api/admin/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add', offerId: selectedOfferForEdit.id, ...newProduct, price: parseFloat(newProduct.price), stock: parseInt(newProduct.stock) }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setOfferProducts(prev => [...prev, data.product]);
+      setNewProduct({ name: '', sku: '', ean: '', category: '', price: '', stock: '100', packaging: 'opak. 1 szt.', imageUrl: '', age: '3+', description: '' });
+      setShowAddProduct(false);
+    } catch (err: any) { alert(`Błąd: ${err.message}`); }
+  };
+
   // Export Order as CSV
   const downloadOrderCSV = (order: Order) => {
     let csvContent = '\uFEFF';
@@ -440,6 +493,18 @@ export default function AdminDashboard() {
               <Users size={18} />
               <span>Klienci i Rabaty</span>
             </button>
+
+            <button
+              onClick={() => { setActiveTab('stats'); setSelectedOfferForEdit(null); }}
+              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+                activeTab === 'stats' && !selectedOfferForEdit
+                  ? 'bg-[#1C60B0] text-white shadow-md shadow-blue-500/10' 
+                  : 'text-slate-655 hover:text-[#1C60B0] hover:bg-slate-50'
+              }`}
+            >
+              <BarChart3 size={18} />
+              <span>Statystyki sprzedaży</span>
+            </button>
           </nav>
         </div>
 
@@ -475,8 +540,9 @@ export default function AdminDashboard() {
               {selectedOfferForEdit && `Edycja katalogu: ${selectedOfferForEdit.title}`}
               {!selectedOfferForEdit && activeTab === 'overview' && 'Analityka i Śledzenie Ruchu B2B'}
               {!selectedOfferForEdit && activeTab === 'offers' && 'Generator Ofert & Zarządzanie Towarami'}
-              {!selectedOfferForEdit && activeTab === 'orders' && 'Rejestr i Taryfikacja Zamówień'}
+              {!selectedOfferForEdit && activeTab === 'orders' && 'Rejestr Zamówień B2B'}
               {!selectedOfferForEdit && activeTab === 'clients' && 'Baza Klientów i Rabaty B2B'}
+              {!selectedOfferForEdit && activeTab === 'stats' && 'Statystyki Sprzedaży'}
             </h1>
             <p className="text-xs text-slate-500 mt-1">
               Bieżące zarządzanie i wgląd w procesy sprzedażowe Askato Sp. z o.o.
@@ -510,15 +576,24 @@ export default function AdminDashboard() {
                 <FileText className="text-[#1C60B0]" size={18} />
                 <span className="text-sm font-bold text-slate-800">Spis produktów w tej ofercie ({filteredOfferProducts.length})</span>
               </div>
-              <div className="relative w-full sm:max-w-md">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                <input
-                  type="text"
-                  placeholder="Filtruj produkty po nazwie, SKU, EAN lub kategorii..."
-                  value={productSearch}
-                  onChange={(e) => setProductSearch(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1C60B0] bg-slate-50"
-                />
+              <div className="flex items-center gap-3">
+                <div className="relative w-full sm:max-w-xs">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <input
+                    type="text"
+                    placeholder="Filtruj produkty..."
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1C60B0] bg-slate-50"
+                  />
+                </div>
+                <button
+                  onClick={() => setShowAddProduct(true)}
+                  className="flex-shrink-0 bg-[#1C60B0] hover:bg-[#1A54A5] text-white font-bold px-3 py-2 rounded-xl text-xs flex items-center space-x-1.5 transition"
+                >
+                  <PlusCircle size={14} />
+                  <span>Dodaj produkt</span>
+                </button>
               </div>
             </div>
 
@@ -559,13 +634,22 @@ export default function AdminDashboard() {
                         <td className="p-3 text-right font-bold text-slate-700">{prod.price.toFixed(2)} PLN</td>
                         <td className="p-3 text-right text-slate-600">{prod.stock}</td>
                         <td className="p-3 text-center">
-                          <button
-                            onClick={() => setEditingProduct(prod)}
-                            className="inline-flex items-center space-x-1 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-[#1C60B0] px-2.5 py-1.5 rounded-lg transition font-semibold"
-                          >
-                            <Edit3 size={12} />
-                            <span>Edytuj</span>
-                          </button>
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => setEditingProduct(prod)}
+                              className="inline-flex items-center space-x-1 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-[#1C60B0] px-2.5 py-1.5 rounded-lg transition font-semibold"
+                            >
+                              <Edit3 size={12} />
+                              <span>Edytuj</span>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteProduct(prod.id)}
+                              className="p-1.5 text-slate-400 hover:text-[#CD2628] hover:bg-red-50 rounded-lg transition"
+                              title="Usuń produkt"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -934,6 +1018,13 @@ export default function AdminDashboard() {
                           <Download size={14} />
                           <span className="text-[10px] font-bold">CSV</span>
                         </button>
+                        <button
+                          onClick={() => handleDeleteOrder(order.id)}
+                          className="bg-white hover:bg-red-50 border border-slate-200 hover:border-red-200 text-slate-400 hover:text-[#CD2628] p-2.5 rounded-xl transition"
+                          title="Usuń zamówienie z historii"
+                        >
+                          <X size={14} />
+                        </button>
                       </div>
                     </div>
 
@@ -974,22 +1065,18 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* TAB 4: CLIENTS & DISCOUNTS */}
         {activeTab === 'clients' && !selectedOfferForEdit && (
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
             <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-              <div className="relative w-full sm:max-w-md">
+              <div className="relative w-full sm:max-w-sm">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                <input
-                  type="text"
-                  placeholder="Filtruj partnerów po firmie, e-mailu, NIP..."
-                  value={clientSearch}
-                  onChange={(e) => setClientSearch(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-[#1C60B0]"
-                />
+                <input type="text" placeholder="Filtruj po firmie, e-mailu, NIP..." value={clientSearch} onChange={(e) => setClientSearch(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" />
               </div>
-              <div className="text-xs text-slate-500 font-medium">
-                Zarejestrowanych firm: <span className="font-bold text-slate-700 bg-slate-100 px-2 py-1 rounded">{filteredClients.length}</span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-slate-500">Firm: <strong className="text-slate-700">{filteredClients.length}</strong></span>
+                <button onClick={() => setShowAddClient(true)} className="bg-[#1C60B0] hover:bg-[#1A54A5] text-white font-bold px-4 py-2 rounded-xl text-xs flex items-center space-x-1.5 transition">
+                  <PlusCircle size={14} /><span>Dodaj klienta</span>
+                </button>
               </div>
             </div>
 
@@ -997,42 +1084,170 @@ export default function AdminDashboard() {
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 text-slate-400 font-bold bg-slate-50">
-                    <th className="p-3">Nazwa firmy / partnera</th>
+                    <th className="p-3">Nazwa firmy</th>
                     <th className="p-3">NIP</th>
-                    <th className="p-3">E-mail logowania</th>
+                    <th className="p-3">E-mail</th>
                     <th className="p-3 text-right">Rabat B2B</th>
+                    <th className="p-3 text-right">Obrót</th>
                     <th className="p-3 text-center">Akcje</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredClients.map((client) => (
-                    <tr key={client.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition">
-                      <td className="p-3 font-bold text-slate-800">{client.companyName}</td>
-                      <td className="p-3 font-mono text-slate-600">{client.nip}</td>
-                      <td className="p-3 text-slate-500">{client.email}</td>
-                      <td className="p-3 text-right">
-                        <span className="bg-emerald-50 text-emerald-700 font-extrabold px-2 py-1 rounded border border-emerald-100">
-                          -{(client.discountRate * 100).toFixed(0)}%
-                        </span>
-                      </td>
-                      <td className="p-3 text-center">
-                        <button
-                          onClick={() => setEditingClient(client)}
-                          className="inline-flex items-center space-x-1 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-[#1C60B0] px-3 py-1.5 rounded-lg transition font-semibold"
-                        >
-                          <Edit3 size={12} />
-                          <span>Zmień rabat</span>
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredClients.map((client) => {
+                    const clientOrders = orders.filter(o => o.clientNip === client.nip || o.clientEmail === client.email);
+                    const totalRevenue = clientOrders.reduce((s, o) => s + o.totalValue, 0);
+                    return (
+                      <tr key={client.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition">
+                        <td className="p-3 font-bold text-slate-800">{client.companyName}</td>
+                        <td className="p-3 font-mono text-slate-600">{client.nip}</td>
+                        <td className="p-3 text-slate-500">{client.email}</td>
+                        <td className="p-3 text-right">
+                          <span className="bg-emerald-50 text-emerald-700 font-extrabold px-2 py-1 rounded border border-emerald-100">-{(client.discountRate * 100).toFixed(0)}%</span>
+                        </td>
+                        <td className="p-3 text-right font-bold text-slate-700">{totalRevenue.toFixed(2)} PLN</td>
+                        <td className="p-3 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <button onClick={() => setEditingClient(client)} className="inline-flex items-center space-x-1 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-[#1C60B0] px-2.5 py-1.5 rounded-lg transition font-semibold">
+                              <Edit3 size={12} /><span>Rabat</span>
+                            </button>
+                            <button onClick={() => handleDeleteClient(client.id)} className="p-1.5 text-slate-400 hover:text-[#CD2628] hover:bg-red-50 rounded-lg transition" title="Usuń klienta">
+                              <X size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
         )}
 
+        {/* TAB 5: STATS */}
+        {activeTab === 'stats' && !selectedOfferForEdit && (
+          <div className="space-y-6">
+            {/* Revenue per client */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+              <h3 className="font-bold text-sm text-slate-800 border-b border-slate-100 pb-3 mb-4">Obrót per klient</h3>
+              {clients.length === 0 ? <p className="text-xs text-slate-400 text-center py-8">Brak klientów</p> : (
+                <div className="space-y-3">
+                  {clients.map(c => {
+                    const clientOrders = orders.filter(o => o.clientEmail === c.email || o.clientNip === c.nip);
+                    const rev = clientOrders.reduce((s, o) => s + o.totalValue, 0);
+                    const maxRev = Math.max(...clients.map(cl => orders.filter(o => o.clientEmail === cl.email).reduce((s, o) => s + o.totalValue, 0)), 1);
+                    return (
+                      <div key={c.id} className="flex items-center gap-4">
+                        <div className="w-40 text-xs font-bold text-slate-700 truncate flex-shrink-0">{c.companyName}</div>
+                        <div className="flex-1 bg-slate-100 rounded-full h-3 overflow-hidden">
+                          <div className="h-full bg-[#1C60B0] rounded-full transition-all" style={{ width: `${(rev / maxRev) * 100}%` }} />
+                        </div>
+                        <div className="text-xs font-bold text-slate-700 w-24 text-right flex-shrink-0">{rev.toFixed(2)} PLN</div>
+                        <div className="text-[10px] text-slate-400 w-10 flex-shrink-0">{clientOrders.length} zam.</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Best-selling products from order items */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+              <h3 className="font-bold text-sm text-slate-800 border-b border-slate-100 pb-3 mb-4">Najlepiej sprzedające się produkty</h3>
+              {(() => {
+                const counts: { [sku: string]: { name: string; sku: string; qty: number; revenue: number } } = {};
+                orders.forEach(o => o.items.forEach(item => {
+                  if (!counts[item.sku]) counts[item.sku] = { name: item.name, sku: item.sku, qty: 0, revenue: 0 };
+                  counts[item.sku].qty += item.quantity;
+                  counts[item.sku].revenue += item.price * item.quantity;
+                }));
+                const sorted = Object.values(counts).sort((a, b) => b.qty - a.qty).slice(0, 10);
+                return sorted.length === 0 ? <p className="text-xs text-slate-400 text-center py-8">Brak danych zamówień</p> : (
+                  <table className="w-full text-xs">
+                    <thead><tr className="text-slate-400 border-b border-slate-100"><th className="py-2 text-left">Produkt</th><th className="py-2 text-right">SKU</th><th className="py-2 text-right">Szt.</th><th className="py-2 text-right">Przychód</th></tr></thead>
+                    <tbody>{sorted.map((p, i) => (
+                      <tr key={p.sku} className="border-b border-slate-50 hover:bg-slate-50">
+                        <td className="py-2 font-semibold text-slate-700 max-w-xs truncate">{i + 1}. {p.name}</td>
+                        <td className="py-2 text-right font-mono text-slate-500">{p.sku}</td>
+                        <td className="py-2 text-right font-bold text-[#1C60B0]">{p.qty}</td>
+                        <td className="py-2 text-right font-bold text-emerald-600">{p.revenue.toFixed(2)} PLN</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                );
+              })()}
+            </div>
+
+            {/* Orders by hour */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+              <h3 className="font-bold text-sm text-slate-800 border-b border-slate-100 pb-3 mb-4">Zamówienia wg godziny dnia</h3>
+              {(() => {
+                const hourCounts = Array(24).fill(0);
+                orders.forEach(o => { const h = new Date(o.createdAt).getHours(); hourCounts[h]++; });
+                const maxH = Math.max(...hourCounts, 1);
+                return (
+                  <div className="flex items-end gap-1 h-24">
+                    {hourCounts.map((count, h) => (
+                      <div key={h} className="flex-1 flex flex-col items-center gap-1">
+                        <div className="w-full bg-[#1C60B0] rounded-sm transition-all" style={{ height: `${(count / maxH) * 80}px`, minHeight: count > 0 ? '4px' : '0' }} />
+                        <span className="text-[8px] text-slate-400">{h}</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
       </main>
+
+      {/* MODAL: Add Client */}
+      {showAddClient && (
+        <div onClick={() => setShowAddClient(false)} className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div onClick={e => e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-slate-800">Dodaj nowego klienta B2B</h3>
+              <button onClick={() => setShowAddClient(false)}><X size={20} className="text-slate-400" /></button>
+            </div>
+            <form onSubmit={handleCreateClient} className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="block text-slate-500 font-semibold mb-1">Nazwa firmy *</label><input required value={newClient.companyName} onChange={e => setNewClient({...newClient, companyName: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
+                <div><label className="block text-slate-500 font-semibold mb-1">NIP</label><input value={newClient.nip} onChange={e => setNewClient({...newClient, nip: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
+              </div>
+              <div><label className="block text-slate-500 font-semibold mb-1">E-mail (login) *</label><input required type="email" value={newClient.email} onChange={e => setNewClient({...newClient, email: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
+              <div><label className="block text-slate-500 font-semibold mb-1">Hasło *</label><input required type="password" value={newClient.password} onChange={e => setNewClient({...newClient, password: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
+              <div><label className="block text-slate-500 font-semibold mb-1">Rabat B2B (%)</label><input type="number" min="0" max="100" value={newClient.discountRate} onChange={e => setNewClient({...newClient, discountRate: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
+              <button type="submit" className="w-full bg-[#1C60B0] text-white font-bold py-2.5 rounded-xl text-xs transition hover:bg-[#1A54A5]">Utwórz konto klienta</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Add Product to Offer */}
+      {showAddProduct && selectedOfferForEdit && (
+        <div onClick={() => setShowAddProduct(false)} className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div onClick={e => e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-slate-800">Dodaj produkt do oferty</h3>
+              <button onClick={() => setShowAddProduct(false)}><X size={20} className="text-slate-400" /></button>
+            </div>
+            <form onSubmit={handleAddProduct} className="space-y-3 text-xs">
+              <div><label className="block text-slate-500 font-semibold mb-1">Nazwa produktu *</label><input required value={newProduct.name} onChange={e => setNewProduct({...newProduct, name: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="block text-slate-500 font-semibold mb-1">SKU / Kod</label><input value={newProduct.sku} onChange={e => setNewProduct({...newProduct, sku: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
+                <div><label className="block text-slate-500 font-semibold mb-1">EAN</label><input value={newProduct.ean} onChange={e => setNewProduct({...newProduct, ean: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
+                <div><label className="block text-slate-500 font-semibold mb-1">Cena netto (PLN) *</label><input required type="number" step="0.01" value={newProduct.price} onChange={e => setNewProduct({...newProduct, price: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
+                <div><label className="block text-slate-500 font-semibold mb-1">Stan (szt.)</label><input type="number" value={newProduct.stock} onChange={e => setNewProduct({...newProduct, stock: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
+                <div><label className="block text-slate-500 font-semibold mb-1">Kategoria</label><input value={newProduct.category} onChange={e => setNewProduct({...newProduct, category: e.target.value})} placeholder="ZABAWKI" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
+                <div><label className="block text-slate-500 font-semibold mb-1">Wiek</label><input value={newProduct.age} onChange={e => setNewProduct({...newProduct, age: e.target.value})} placeholder="3+" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
+              </div>
+              <div><label className="block text-slate-500 font-semibold mb-1">URL zdjecia</label><input type="url" value={newProduct.imageUrl} onChange={e => setNewProduct({...newProduct, imageUrl: e.target.value})} placeholder="https://..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
+              <button type="submit" className="w-full bg-[#1C60B0] text-white font-bold py-2.5 rounded-xl text-xs transition hover:bg-[#1A54A5]">Dodaj produkt do oferty</button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ==================== MODAL 1: PRODUCT EDITOR MODAL ==================== */}
       {editingProduct && (

@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { neon } from '@neondatabase/serverless';
 
 export const dynamic = 'force-dynamic';
+
+const getSql = () => {
+  const url = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  return url ? neon(url) : null;
+};
 
 export async function GET() {
   try {
@@ -31,5 +37,21 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error updating order status:', error);
     return NextResponse.json({ error: 'Błąd serwera podczas aktualizacji statusu' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { orderId } = await request.json();
+    if (!orderId) return NextResponse.json({ error: 'Brak orderId' }, { status: 400 });
+
+    const sql = getSql();
+    if (sql) {
+      await sql`DELETE FROM orders WHERE id = ${orderId}`;
+    }
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error('Error deleting order:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
