@@ -149,9 +149,26 @@ export async function POST(request: NextRequest) {
 
     const parsedProducts: any[] = [];
 
-    dataRows.forEach((row, index) => {
+    // Helper: try to download an image from URL and save it locally
+    const downloadAndSaveImage = async (url: string, destPath: string): Promise<boolean> => {
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        if (!res.ok) return false;
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.startsWith('image/')) return false;
+        const arrayBuf = await res.arrayBuffer();
+        fs.mkdirSync(path.dirname(destPath), { recursive: true });
+        fs.writeFileSync(destPath, Buffer.from(arrayBuf));
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    for (let index = 0; index < dataRows.length; index++) {
+      const row = dataRows[index];
       // Skip completely empty rows
-      if (row.every(c => c === '' || c === null || c === undefined)) return;
+      if (row.every((c: any) => c === '' || c === null || c === undefined)) continue;
 
       const sku = getVal(row, skuIdx) ?? `ASK-${1000 + index}`;
       const ean = getVal(row, eanIdx) ?? `590${Math.floor(1000000000 + Math.random() * 9000000000)}`;
@@ -165,6 +182,9 @@ export async function POST(request: NextRequest) {
       const rawImage = getVal(row, imgIdx);
       const rawDiscount = getVal(row, discountIdx);
       const rawOrigPrice = getVal(row, origPriceIdx);
+
+      // Skip row if no meaningful SKU or name
+      if (!sku && !name) continue;
 
       const priceVal = parsePrice(rawPrice);
       const stockVal = parseStock(rawStock);
@@ -200,28 +220,31 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Image URL priority:
-      // 1. Local file /public/products/product_{SKU}.jpeg
-      // 2. URL from Excel column (if starts with http)
-      // 3. Fallback Unsplash placeholder
+      // --- Image URL resolution (priority order) ---
+      // 1. Local file already exists → use it directly
+      // 2. Excel has a URL → download & save locally → use local path
+      // 3. No URL in Excel → use Unsplash placeholder
       const skuStr = String(sku).trim();
       const localImagePath = path.join(process.cwd(), 'public', 'products', `product_${skuStr}.jpeg`);
       const localImageUrl = `/products/product_${skuStr}.jpeg`;
       let imageUrl: string;
+
       if (fs.existsSync(localImagePath)) {
+        // Already have it locally
         imageUrl = localImageUrl;
       } else if (rawImage && String(rawImage).trim().startsWith('http')) {
-        imageUrl = String(rawImage).trim();
+        // Try to download from Excel URL and store locally
+        const externalUrl = String(rawImage).trim();
+        const downloaded = await downloadAndSaveImage(externalUrl, localImagePath);
+        imageUrl = downloaded ? localImageUrl : externalUrl;
       } else {
+        // No image available — use placeholder
         imageUrl = `https://images.unsplash.com/photo-1596464716127-f2a82984de30?w=500&auto=format&fit=crop&q=60`;
       }
 
-      // Skip row if no meaningful SKU or name
-      if (!sku && !name) return;
-
       parsedProducts.push({
         offerId: newOffer.id,
-        sku: String(sku).trim(),
+        sku: skuStr,
         ean: String(ean).trim(),
         category: String(category).trim().toUpperCase(),
         name: String(name).trim(),
@@ -234,7 +257,7 @@ export async function POST(request: NextRequest) {
         discountRate: discountRateVal,
         originalPrice: parseFloat(origPriceVal.toFixed(2))
       });
-    });
+    }
 
     if (parsedProducts.length === 0) {
       // Roll back offer creation
