@@ -28,10 +28,13 @@ export async function GET(
     // Apply customer discount if user is logged in
     let discountRate = 0;
 
-    // Map products preserving product-specific discounts, ignoring customer B2B discounts per client request
+    // Map products — always compute imageUrl from SKU to use local assets
+    // Frontend handles missing images gracefully via onError
     const productsWithPrices = products.map(p => {
+      const computedImageUrl = `/products/product_${p.sku}.jpeg`;
       return {
         ...p,
+        imageUrl: computedImageUrl,
         originalPrice: p.originalPrice || p.price,
         price: p.price,
         discountRate: p.discountRate || 0
