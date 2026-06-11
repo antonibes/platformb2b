@@ -65,8 +65,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, product: newProd });
     }
 
+    // Action: reorder products and update their categories
+    if (action === 'reorder_and_categorize') {
+      const { products } = updates;
+      if (!Array.isArray(products)) {
+        return NextResponse.json({ error: 'Brak lub niepoprawna lista produktów' }, { status: 400 });
+      }
+      await db.products.updateManyPositionsAndCategories(products);
+      return NextResponse.json({ success: true });
+    }
+
+    // Action: rename a category for all products in an offer
+    if (action === 'rename_category') {
+      const { offerId, oldCategoryName, newCategoryName } = updates;
+      if (!offerId || !oldCategoryName || !newCategoryName) {
+        return NextResponse.json({ error: 'Brak wymaganych parametrów (offerId, oldCategoryName, newCategoryName)' }, { status: 400 });
+      }
+      const allProds = await db.products.findByOfferId(offerId);
+      const targetProds = allProds.filter(p => (p.category || 'Zabawki').toUpperCase().trim() === oldCategoryName.toUpperCase().trim());
+      for (const p of targetProds) {
+        await db.products.update(p.id, { category: newCategoryName.trim() });
+      }
+      return NextResponse.json({ success: true });
+    }
+
     // Default: update existing product
-    if (!productId) {
+    if (!productId && !action) {
       return NextResponse.json({ error: 'Brak parametru productId' }, { status: 400 });
     }
 

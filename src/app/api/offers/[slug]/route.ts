@@ -10,7 +10,7 @@ export async function GET(
   try {
     const slug = params.slug;
     const searchParams = request.nextUrl.searchParams;
-    const userId = searchParams.get('userId');
+    const preview = searchParams.get('preview') === 'true';
 
     // Find offer by slug
     const offer = await db.offers.findBySlug(slug);
@@ -18,7 +18,7 @@ export async function GET(
       return NextResponse.json({ error: 'Oferta nie została znaleziona' }, { status: 404 });
     }
 
-    if (!offer.isActive) {
+    if (!offer.isActive && !preview) {
       return NextResponse.json({ error: 'Ta oferta jest obecnie nieaktywna' }, { status: 403 });
     }
 

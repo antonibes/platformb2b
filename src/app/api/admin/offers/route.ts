@@ -250,11 +250,8 @@ export async function DELETE(request: NextRequest) {
     // Delete all products in offer first
     await db.products.deleteByOfferId(offerId);
 
-    // Then delete offer (we need a db.offers.delete method)
-    const sql = (db as any)._sql?.();
-    if (sql) {
-      await sql`DELETE FROM offers WHERE id = ${offerId}`;
-    }
+    // Then delete offer
+    await db.offers.delete(offerId);
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Error deleting offer:', error);

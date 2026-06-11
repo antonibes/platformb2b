@@ -38,6 +38,7 @@ export interface Product {
   age?: string;
   discountRate?: number;
   originalPrice?: number;
+  position?: number;
 }
 
 export interface OrderItem {
@@ -136,6 +137,18 @@ function writeDb(data: DatabaseSchema): void {
 }
 
 // SQL Mapping Helpers
+function toUtcIsoString(dateInput: any): string {
+  if (!dateInput) return new Date().toISOString();
+  if (dateInput instanceof Date) {
+    return dateInput.toISOString();
+  }
+  try {
+    return new Date(dateInput).toISOString();
+  } catch {
+    return new Date().toISOString();
+  }
+}
+
 function mapUser(row: any): B2BUser {
   return {
     id: row.id,
@@ -154,7 +167,7 @@ function mapOffer(row: any): Offer {
     title: row.title,
     slug: row.slug,
     isActive: !!row.is_active,
-    createdAt: new Date(row.created_at).toISOString()
+    createdAt: toUtcIsoString(row.created_at)
   };
 }
 
@@ -173,7 +186,8 @@ function mapProduct(row: any): Product {
     description: row.description || undefined,
     age: row.age || undefined,
     discountRate: row.discount_rate !== undefined && row.discount_rate !== null ? parseFloat(row.discount_rate) : 0,
-    originalPrice: row.original_price !== undefined && row.original_price !== null ? parseFloat(row.original_price) : parseFloat(row.price)
+    originalPrice: row.original_price !== undefined && row.original_price !== null ? parseFloat(row.original_price) : parseFloat(row.price),
+    position: row.position !== undefined && row.position !== null ? parseInt(row.position, 10) : 0
   };
 }
 
@@ -190,7 +204,7 @@ function mapOrder(row: any): Order {
     totalValue: parseFloat(row.total_value),
     status: row.status as Order['status'],
     items: typeof row.items === 'string' ? JSON.parse(row.items) : row.items,
-    createdAt: new Date(row.created_at).toISOString()
+    createdAt: toUtcIsoString(row.created_at)
   };
 }
 
@@ -202,7 +216,7 @@ function mapTrackingEvent(row: any): TrackingEvent {
     eventType: row.event_type as TrackingEvent['eventType'],
     offerSlug: row.offer_slug,
     payload: typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload,
-    createdAt: new Date(row.created_at).toISOString()
+    createdAt: toUtcIsoString(row.created_at)
   };
 }
 
@@ -298,7 +312,7 @@ export const db = {
       if (sql) {
         await sql`
           INSERT INTO offers (id, title, slug, is_active, created_at)
-          VALUES (${id}, ${offer.title}, ${offer.slug}, ${offer.isActive}, ${new Date(createdAt)})
+          VALUES (${id}, ${offer.title}, ${offer.slug}, ${offer.isActive}, ${createdAt})
         `;
         return { ...offer, id, createdAt };
       }
@@ -329,6 +343,16 @@ export const db = {
         return current.offers[index];
       }
       return null;
+    },
+    delete: async (id: string): Promise<void> => {
+      const sql = getSql();
+      if (sql) {
+        await sql`DELETE FROM offers WHERE id = ${id}`;
+        return;
+      }
+      const current = readDb();
+      current.offers = current.offers.filter(o => o.id !== id);
+      writeDb(current);
     }
   },
   products: {
@@ -403,7 +427,34 @@ export const db = {
         addedProducts.push(prod);
       });
       writeDb(current);
-      return addedProducts;
+       return addedProducts;
+    },
+    updateManyPositionsAndCategories: async (items: Array<{ id: string; category: string; position: number }>): Promise<void> => {
+      if (items.length === 0) return;
+      const sql = getSql();
+      if (sql) {
+        const ids = items.map(x => x.id);
+        const categories = items.map(x => x.category);
+        const positions = items.map(x => x.position);
+        await sql`
+          UPDATE products AS p
+          SET 
+            category = u.cat,
+            position = u.pos::int
+          FROM UNNEST(${ids}::text[], ${categories}::text[], ${positions}::int[]) AS u(id, cat, pos)
+          WHERE p.id = u.id
+        `;
+        return;
+      }
+      const current = readDb();
+      items.forEach(item => {
+        const idx = current.products.findIndex(p => p.id === item.id);
+        if (idx !== -1) {
+          current.products[idx].category = item.category;
+          current.products[idx].position = item.position;
+        }
+      });
+      writeDb(current);
     },
     update: async (id: string, updates: Partial<Product>): Promise<Product | null> => {
       const sql = getSql();
@@ -418,7 +469,8 @@ export const db = {
               price = ${merged.price}, image_url = ${merged.imageUrl},
               packaging = ${merged.packaging}, stock = ${merged.stock},
               description = ${merged.description || null}, age = ${merged.age || null},
-              discount_rate = ${merged.discountRate || 0}, original_price = ${merged.originalPrice || merged.price}
+              discount_rate = ${merged.discountRate || 0}, original_price = ${merged.originalPrice || merged.price},
+              position = ${merged.position || 0}
           WHERE id = ${id}
         `;
         return merged;
@@ -469,7 +521,7 @@ export const db = {
       if (sql) {
         await sql`
           INSERT INTO orders (id, user_id, guest_device_id, client_name, client_nip, client_email, client_phone, comments, total_value, status, items, created_at)
-          VALUES (${id}, ${order.userId}, ${order.guestDeviceId}, ${order.clientName}, ${order.clientNip}, ${order.clientEmail}, ${order.clientPhone}, ${order.comments}, ${order.totalValue}, ${status}, ${JSON.stringify(order.items)}, ${new Date(createdAt)})
+          VALUES (${id}, ${order.userId}, ${order.guestDeviceId}, ${order.clientName}, ${order.clientNip}, ${order.clientEmail}, ${order.clientPhone}, ${order.comments}, ${order.totalValue}, ${status}, ${JSON.stringify(order.items)}, ${createdAt})
         `;
         return { ...order, id, createdAt, status };
       }
@@ -522,7 +574,7 @@ export const db = {
       if (sql) {
         await sql`
           INSERT INTO tracking_events (id, device_id, user_id, event_type, offer_slug, payload, created_at)
-          VALUES (${id}, ${event.deviceId}, ${event.userId}, ${event.eventType}, ${event.offerSlug}, ${JSON.stringify(event.payload)}, ${new Date(createdAt)})
+          VALUES (${id}, ${event.deviceId}, ${event.userId}, ${event.eventType}, ${event.offerSlug}, ${JSON.stringify(event.payload)}, ${createdAt})
         `;
         return { ...event, id, createdAt };
       }

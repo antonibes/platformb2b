@@ -71,7 +71,8 @@ async function run() {
         image_url TEXT NOT NULL,
         packaging VARCHAR(255) NOT NULL,
         stock INT NOT NULL,
-        description TEXT
+        description TEXT,
+        position INT DEFAULT 0
       )
     `;
 

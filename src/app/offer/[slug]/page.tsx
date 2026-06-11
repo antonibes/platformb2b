@@ -107,8 +107,12 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
 
     const fetchOffer = async () => {
       try {
-        const userIdParam = user?.id ? `?userId=${user.id}` : '';
-        const res = await fetch(`/api/offers/${slug}${userIdParam}`);
+        const queryParams = new URLSearchParams(window.location.search);
+        if (user?.id) {
+          queryParams.set('userId', user.id);
+        }
+        const queryString = queryParams.toString();
+        const res = await fetch(`/api/offers/${slug}${queryString ? `?${queryString}` : ''}`);
         const data = await res.json();
         
         if (!res.ok) {

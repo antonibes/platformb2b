@@ -89,6 +89,7 @@ interface Product {
   age?: string;
   discountRate?: number;
   originalPrice?: number;
+  position?: number;
 }
 
 export default function AdminDashboard() {
@@ -132,6 +133,60 @@ export default function AdminDashboard() {
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [newClient, setNewClient] = useState({ email: '', password: '', companyName: '', nip: '', discountRate: '0' });
   const [newProduct, setNewProduct] = useState({ name: '', sku: '', ean: '', category: '', price: '', stock: '100', packaging: 'PCB 1', imageUrl: '', age: '3+', description: '', discountRate: '0', originalPrice: '' });
+
+  // Organizer and Order status states
+  const [editorMode, setEditorMode] = useState<'table' | 'organizer'>('table');
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('all');
+  const [localOrganizerProducts, setLocalOrganizerProducts] = useState<Product[]>([]);
+  const [uniqueCategoriesList, setUniqueCategoriesList] = useState<string[]>([]);
+  const [selectedOrganizerCategory, setSelectedOrganizerCategory] = useState<string>('');
+  const [savingOrganizer, setSavingOrganizer] = useState(false);
+
+  // Sync organizer states when offerProducts updates
+  useEffect(() => {
+    const catsSet = new Set<string>();
+    offerProducts.forEach(p => {
+      catsSet.add((p.category || 'Zabawki').toUpperCase().trim());
+    });
+    
+    const newCats = Array.from(catsSet);
+    
+    setUniqueCategoriesList(prev => {
+      const existing = [...prev];
+      const combined = [...existing];
+      newCats.forEach(c => {
+        if (!combined.includes(c)) {
+          combined.push(c);
+        }
+      });
+      const filtered = combined.filter(c => newCats.includes(c));
+      
+      // Select the first category by default if none is selected
+      if (filtered.length > 0 && (!selectedOrganizerCategory || !filtered.includes(selectedOrganizerCategory))) {
+        setSelectedOrganizerCategory(filtered[0]);
+      }
+      return filtered;
+    });
+
+    setLocalOrganizerProducts(prev => {
+      const map = new Map(prev.map(p => [p.id, p]));
+      return [...offerProducts].map(p => {
+        const existingProd = map.get(p.id);
+        if (existingProd) {
+          return { ...p, category: existingProd.category, position: existingProd.position };
+        }
+        return p;
+      }).sort((a, b) => (a.position || 0) - (b.position || 0));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offerProducts]);
+
+  const currentCategoryProducts = useMemo(() => {
+    if (!selectedOrganizerCategory) return [];
+    return localOrganizerProducts.filter(
+      p => (p.category || 'Zabawki').toUpperCase().trim() === selectedOrganizerCategory.toUpperCase().trim()
+    );
+  }, [localOrganizerProducts, selectedOrganizerCategory]);
 
   // 1. Session check
   useEffect(() => {
@@ -310,6 +365,56 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleSaveOrganizer = async () => {
+    if (!selectedOfferForEdit) return;
+    setSavingOrganizer(true);
+    try {
+      const categoriesOrder = uniqueCategoriesList;
+      const orderedProducts: Product[] = [];
+      categoriesOrder.forEach(cat => {
+        const catProds = localOrganizerProducts.filter(p => (p.category || 'Zabawki').toUpperCase().trim() === cat.toUpperCase().trim());
+        orderedProducts.push(...catProds);
+      });
+      
+      const updatedProductsPayload = orderedProducts.map((p, idx) => ({
+        id: p.id,
+        category: p.category || 'ZABAWKI',
+        position: idx
+      }));
+
+      const res = await fetch('/api/admin/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'reorder_and_categorize',
+          products: updatedProductsPayload
+        })
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Nie udało się zapisać kolejności');
+      }
+
+      setOfferProducts(prev => {
+        const map = new Map(updatedProductsPayload.map(x => [x.id, x]));
+        return prev.map(p => {
+          const upd = map.get(p.id);
+          if (upd) {
+            return { ...p, category: upd.category, position: upd.position };
+          }
+          return p;
+        }).sort((a, b) => (a.position || 0) - (b.position || 0));
+      });
+
+      alert('Ułożenie i kategorie zostały pomyślnie zapisane!');
+    } catch (err: any) {
+      alert(`Błąd zapisu: ${err.message}`);
+    } finally {
+      setSavingOrganizer(false);
+    }
+  };
+
   // Change order status
   const handleUpdateOrderStatus = async (orderId: string, newStatus: Order['status']) => {
     try {
@@ -359,6 +464,27 @@ export default function AdminDashboard() {
       setNewClient({ email: '', password: '', companyName: '', nip: '', discountRate: '0' });
       setShowAddClient(false);
     } catch (err: any) { alert(`Błąd: ${err.message}`); }
+  };
+
+  const handleDeleteOffer = async (offerId: string) => {
+    if (!confirm('Czy na pewno chcesz trwale usunąć tę ofertę wraz ze wszystkimi jej produktami?')) return;
+    try {
+      const res = await fetch('/api/admin/offers', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ offerId })
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Błąd serwera');
+      }
+      setOffers(prev => prev.filter(o => o.id !== offerId));
+      if (selectedOfferForEdit && selectedOfferForEdit.id === offerId) {
+        setSelectedOfferForEdit(null);
+      }
+    } catch (err: any) {
+      alert(`Błąd usuwania oferty: ${err.message}`);
+    }
   };
 
   const handleDeleteProduct = async (productId: string) => {
@@ -592,90 +718,369 @@ export default function AdminDashboard() {
         {/* ==================== SUB-TAB: SELECTED OFFER PRODUCT EDIT ==================== */}
         {selectedOfferForEdit && (
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pb-4 border-b border-slate-150">
-              <div className="flex items-center space-x-2.5">
-                <FileText className="text-[#1C60B0]" size={18} />
-                <span className="text-sm font-bold text-slate-800">Spis produktów w tej ofercie ({filteredOfferProducts.length})</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="relative w-full sm:max-w-xs">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                  <input
-                    type="text"
-                    placeholder="Filtruj produkty..."
-                    value={productSearch}
-                    onChange={(e) => setProductSearch(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1C60B0] bg-slate-50"
-                  />
-                </div>
-                <button
-                  onClick={() => setShowAddProduct(true)}
-                  className="flex-shrink-0 bg-[#1C60B0] hover:bg-[#1A54A5] text-white font-bold px-3 py-2 rounded-xl text-xs flex items-center space-x-1.5 transition"
-                >
-                  <PlusCircle size={14} />
-                  <span>Dodaj produkt</span>
-                </button>
-              </div>
+            
+            {/* Organizer View Mode Tab Toggle */}
+            <div className="flex border-b border-slate-250 pb-px">
+              <button
+                onClick={() => setEditorMode('table')}
+                className={`py-2 px-4 font-bold text-xs border-b-2 transition-all ${
+                  editorMode === 'table'
+                    ? 'border-[#1C60B0] text-[#1C60B0]'
+                    : 'border-transparent text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                Lista produktów (Tabela)
+              </button>
+              <button
+                onClick={() => setEditorMode('organizer')}
+                className={`py-2 px-4 font-bold text-xs border-b-2 transition-all flex items-center space-x-1.5 ${
+                  editorMode === 'organizer'
+                    ? 'border-[#1C60B0] text-[#1C60B0]'
+                    : 'border-transparent text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                <span>Układ kategorii i kolejność produktów</span>
+                <span className="bg-indigo-50 text-[#1C60B0] text-[9px] px-1.5 py-0.5 rounded font-extrabold border border-indigo-100">Nowość</span>
+              </button>
             </div>
 
-            {productsLoading ? (
-              <div className="py-16 text-center">
-                <div className="w-10 h-10 border-4 border-[#1C60B0] border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                <p className="text-xs text-slate-500">Pobieranie listy produktów...</p>
+            {editorMode === 'table' && (
+              <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pb-4 border-b border-slate-150">
+                  <div className="flex items-center space-x-2.5">
+                    <FileText className="text-[#1C60B0]" size={18} />
+                    <span className="text-sm font-bold text-slate-800">Spis produktów w tej ofercie ({filteredOfferProducts.length})</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="relative w-full sm:max-w-xs">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                      <input
+                        type="text"
+                        placeholder="Filtruj produkty..."
+                        value={productSearch}
+                        onChange={(e) => setProductSearch(e.target.value)}
+                        className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#1C60B0] bg-slate-50"
+                      />
+                    </div>
+                    <button
+                      onClick={() => setShowAddProduct(true)}
+                      className="flex-shrink-0 bg-[#1C60B0] hover:bg-[#1A54A5] text-white font-bold px-3 py-2 rounded-xl text-xs flex items-center space-x-1.5 transition"
+                    >
+                      <PlusCircle size={14} />
+                      <span>Dodaj produkt</span>
+                    </button>
+                  </div>
+                </div>
+
+                {productsLoading ? (
+                  <div className="py-16 text-center">
+                    <div className="w-10 h-10 border-4 border-[#1C60B0] border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                    <p className="text-xs text-slate-500">Pobieranie listy produktów...</p>
+                  </div>
+                ) : filteredOfferProducts.length === 0 ? (
+                  <p className="text-xs text-slate-500 text-center py-16">Brak pasujących produktów w ofercie</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-slate-400 font-bold bg-slate-50">
+                          <th className="p-3">Zdjęcie</th>
+                          <th className="p-3">Nazwa produktu</th>
+                          <th className="p-3">SKU / Kod</th>
+                          <th className="p-3">Kategoria</th>
+                          <th className="p-3 text-right">Cena</th>
+                          <th className="p-3 text-right">Stan (szt)</th>
+                          <th className="p-3 text-center">Akcje</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredOfferProducts.map((prod) => (
+                          <tr key={prod.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition">
+                            <td className="p-3">
+                              <div className="w-10 h-10 bg-white border border-slate-200 rounded p-1 flex items-center justify-center overflow-hidden">
+                                <img src={prod.imageUrl} alt={prod.name} className="max-h-full max-w-full object-contain" />
+                              </div>
+                            </td>
+                            <td className="p-3 font-semibold text-slate-800 max-w-xs truncate" title={prod.name}>
+                              {prod.name}
+                            </td>
+                            <td className="p-3 font-mono text-slate-500">{prod.sku}</td>
+                            <td className="p-3 text-slate-500">{prod.category || 'Zabawki'}</td>
+                            <td className="p-3 text-right font-bold text-slate-700">{prod.price.toFixed(2)} PLN</td>
+                            <td className="p-3 text-right text-slate-600">{prod.stock}</td>
+                            <td className="p-3 text-center">
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  onClick={() => setEditingProduct(prod)}
+                                  className="inline-flex items-center space-x-1 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-[#1C60B0] px-2.5 py-1.5 rounded-lg transition font-semibold"
+                                >
+                                  <Edit3 size={12} />
+                                  <span>Edytuj</span>
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteProduct(prod.id)}
+                                  className="p-1.5 text-slate-400 hover:text-[#CD2628] hover:bg-red-50 rounded-lg transition"
+                                  title="Usuń produkt"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
-            ) : filteredOfferProducts.length === 0 ? (
-              <p className="text-xs text-slate-500 text-center py-16">Brak pasujących produktów w ofercie</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-200 text-slate-400 font-bold bg-slate-50">
-                      <th className="p-3">Zdjęcie</th>
-                      <th className="p-3">Nazwa produktu</th>
-                      <th className="p-3">SKU / Kod</th>
-                      <th className="p-3">Kategoria</th>
-                      <th className="p-3 text-right">Cena</th>
-                      <th className="p-3 text-right">Stan (szt)</th>
-                      <th className="p-3 text-center">Akcje</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredOfferProducts.map((prod) => (
-                      <tr key={prod.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition">
-                        <td className="p-3">
-                          <div className="w-10 h-10 bg-white border border-slate-200 rounded p-1 flex items-center justify-center overflow-hidden">
-                            <img src={prod.imageUrl} alt={prod.name} className="max-h-full max-w-full object-contain" />
-                          </div>
-                        </td>
-                        <td className="p-3 font-semibold text-slate-800 max-w-xs truncate" title={prod.name}>
-                          {prod.name}
-                        </td>
-                        <td className="p-3 font-mono text-slate-500">{prod.sku}</td>
-                        <td className="p-3 text-slate-500">{prod.category || 'Zabawki'}</td>
-                        <td className="p-3 text-right font-bold text-slate-700">{prod.price.toFixed(2)} PLN</td>
-                        <td className="p-3 text-right text-slate-600">{prod.stock}</td>
-                        <td className="p-3 text-center">
-                          <div className="flex items-center justify-center gap-2">
+            )}
+
+            {editorMode === 'organizer' && (
+              <div className="space-y-6 animate-fade-in">
+                
+                {/* Info banner */}
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 animate-fade-in">
+                  <div className="space-y-1">
+                    <h4 className="font-bold text-xs text-slate-800">Organizator ułożenia oferty B2B</h4>
+                    <p className="text-[11px] text-slate-550 leading-relaxed">
+                      Zmień kolejność kategorii przyciskami ▲ / ▼ (jak kanały na Discordzie). Zmieniaj nazwy kategorii zbiorczo lub przenoś produkty do innych grup. Kliknij <strong>Zapisz układ katalogu</strong>, aby zapisać ułożenie w bazie danych.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleSaveOrganizer}
+                    disabled={savingOrganizer}
+                    className="w-full md:w-auto flex-shrink-0 bg-[#1C60B0] hover:bg-[#1A54A5] text-white text-xs font-bold px-5 py-2.5 rounded-xl transition flex items-center justify-center space-x-2 shadow-sm disabled:opacity-50"
+                  >
+                    {savingOrganizer ? (
+                      <>
+                        <RefreshCw className="animate-spin" size={14} />
+                        <span>Zapisywanie...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle size={14} />
+                        <span>Zapisz układ katalogu</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Left Column: Categories List */}
+                  <div className="lg:col-span-4 bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                    <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Kategorie ({uniqueCategoriesList.length})</span>
+                      <button
+                        onClick={() => {
+                          const newCatName = prompt('Podaj nazwę nowej kategorii:');
+                          if (newCatName && newCatName.trim()) {
+                            const trimmed = newCatName.trim().toUpperCase();
+                            if (!uniqueCategoriesList.includes(trimmed)) {
+                              setUniqueCategoriesList([...uniqueCategoriesList, trimmed]);
+                              setSelectedOrganizerCategory(trimmed);
+                            }
+                          }
+                        }}
+                        className="text-[#1C60B0] hover:text-[#1A54A5] text-[10px] font-bold flex items-center space-x-1"
+                      >
+                        <PlusCircle size={12} />
+                        <span>Dodaj</span>
+                      </button>
+                    </div>
+
+                    <div className="space-y-1.5 max-h-[450px] overflow-y-auto pr-1">
+                      {uniqueCategoriesList.map((cat, idx) => (
+                        <div
+                          key={cat}
+                          onClick={() => setSelectedOrganizerCategory(cat)}
+                          className={`group flex items-center justify-between p-2.5 rounded-xl border text-xs font-bold cursor-pointer transition-all ${
+                            selectedOrganizerCategory === cat
+                              ? 'bg-[#1C60B0] text-white border-[#1C60B0]'
+                              : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          <span className="truncate pr-2">{cat}</span>
+                          
+                          {/* Controls */}
+                          <div className="flex items-center space-x-1.5 opacity-80 group-hover:opacity-100 flex-shrink-0">
+                            {/* Rename */}
                             <button
-                              onClick={() => setEditingProduct(prod)}
-                              className="inline-flex items-center space-x-1 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-[#1C60B0] px-2.5 py-1.5 rounded-lg transition font-semibold"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const newName = prompt(`Zmień nazwę kategorii "${cat}" dla wszystkich produktów:`, cat);
+                                if (newName && newName.trim() && newName.trim().toUpperCase() !== cat) {
+                                  const trimmedNew = newName.trim().toUpperCase();
+                                  setLocalOrganizerProducts(prev =>
+                                    prev.map(p => (p.category || 'Zabawki').toUpperCase().trim() === cat ? { ...p, category: trimmedNew } : p)
+                                  );
+                                  setUniqueCategoriesList(prev =>
+                                    prev.map(c => c === cat ? trimmedNew : c)
+                                  );
+                                  if (selectedOrganizerCategory === cat) {
+                                    setSelectedOrganizerCategory(trimmedNew);
+                                  }
+                                }
+                              }}
+                              className={`p-1 rounded hover:bg-black/10 transition ${
+                                selectedOrganizerCategory === cat ? 'text-white' : 'text-slate-400 hover:text-slate-700'
+                              }`}
+                              title="Zmień nazwę kategorii"
                             >
-                              <Edit3 size={12} />
-                              <span>Edytuj</span>
+                              <Edit3 size={11} />
                             </button>
+
+                            {/* Up */}
                             <button
-                              onClick={() => handleDeleteProduct(prod.id)}
-                              className="p-1.5 text-slate-400 hover:text-[#CD2628] hover:bg-red-50 rounded-lg transition"
-                              title="Usuń produkt"
+                              disabled={idx === 0}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (idx > 0) {
+                                  const list = [...uniqueCategoriesList];
+                                  const temp = list[idx - 1];
+                                  list[idx - 1] = list[idx];
+                                  list[idx] = temp;
+                                  setUniqueCategoriesList(list);
+                                }
+                              }}
+                              className={`p-1 rounded hover:bg-black/10 disabled:opacity-30 transition ${
+                                selectedOrganizerCategory === cat ? 'text-white' : 'text-slate-400 hover:text-slate-700'
+                              }`}
                             >
-                              <X size={14} />
+                              ▲
+                            </button>
+
+                            {/* Down */}
+                            <button
+                              disabled={idx === uniqueCategoriesList.length - 1}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (idx < uniqueCategoriesList.length - 1) {
+                                  const list = [...uniqueCategoriesList];
+                                  const temp = list[idx + 1];
+                                  list[idx + 1] = list[idx];
+                                  list[idx] = temp;
+                                  setUniqueCategoriesList(list);
+                                }
+                              }}
+                              className={`p-1 rounded hover:bg-black/10 disabled:opacity-30 transition ${
+                                selectedOrganizerCategory === cat ? 'text-white' : 'text-slate-400 hover:text-slate-700'
+                              }`}
+                            >
+                              ▼
                             </button>
                           </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Right Column: Products List */}
+                  <div className="lg:col-span-8 bg-white border border-slate-200 rounded-2xl p-4 space-y-4">
+                    <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Produkty w kategorii</span>
+                        <h4 className="font-extrabold text-sm text-slate-800">{selectedOrganizerCategory || 'Wybierz kategorię'}</h4>
+                      </div>
+                      <span className="text-xs text-slate-500 font-bold">
+                        Sztuk: <span className="bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-extrabold">{currentCategoryProducts.length}</span>
+                      </span>
+                    </div>
+
+                    {!selectedOrganizerCategory ? (
+                      <div className="text-center py-20 text-slate-400 text-xs">
+                        <span>Wybierz kategorię po lewej stronie</span>
+                      </div>
+                    ) : currentCategoryProducts.length === 0 ? (
+                      <div className="text-center py-20 text-slate-450 text-xs bg-slate-50 rounded-2xl border border-slate-200 border-dashed">
+                        <span>Ta kategoria jest obecnie pusta. Przenieś tu produkty z innych grup za pomocą selektora w innych kategoriach.</span>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-[450px] overflow-y-auto pr-1">
+                        {currentCategoryProducts.map((p, idx) => (
+                          <div
+                            key={p.id}
+                            className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100/60 border border-slate-200 rounded-xl text-xs transition-all animate-fade-in"
+                          >
+                            <div className="flex items-center space-x-3 min-w-0">
+                              <div className="w-10 h-10 bg-white border border-slate-200 rounded p-1 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                <img src={p.imageUrl} alt={p.name} className="max-h-full max-w-full object-contain" />
+                              </div>
+                              <div className="min-w-0">
+                                <span className="font-bold text-slate-850 block truncate max-w-[240px] md:max-w-[320px]" title={p.name}>{p.name}</span>
+                                <span className="text-[10px] text-slate-400 font-mono">SKU: {p.sku} | EAN: {p.ean}</span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center space-x-4 flex-shrink-0">
+                              {/* Category selector */}
+                              <div className="flex flex-col items-end">
+                                <label className="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Grupa:</label>
+                                <select
+                                  value={(p.category || 'Zabawki').toUpperCase().trim()}
+                                  onChange={(e) => {
+                                    const targetCat = e.target.value;
+                                    setLocalOrganizerProducts(prev =>
+                                      prev.map(item => item.id === p.id ? { ...item, category: targetCat } : item)
+                                    );
+                                  }}
+                                  className="bg-white border border-slate-200 rounded px-1.5 py-0.5 text-[11px] font-bold text-slate-650 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]"
+                                >
+                                  {uniqueCategoriesList.map(c => (
+                                    <option key={c} value={c}>{c}</option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              {/* Up/Down buttons */}
+                              <div className="flex items-center space-x-1">
+                                <button
+                                  disabled={idx === 0}
+                                  onClick={() => {
+                                    if (idx > 0) {
+                                      const prevProd = currentCategoryProducts[idx - 1];
+                                      setLocalOrganizerProducts(prev => {
+                                        const list = [...prev];
+                                        const idxA = list.findIndex(x => x.id === p.id);
+                                        const idxB = list.findIndex(x => x.id === prevProd.id);
+                                        const temp = list[idxA];
+                                        list[idxA] = list[idxB];
+                                        list[idxB] = temp;
+                                        return list;
+                                      });
+                                    }
+                                  }}
+                                  className="p-1.5 bg-white hover:bg-slate-200 border border-slate-200 rounded text-slate-500 hover:text-slate-800 disabled:opacity-30 transition"
+                                >
+                                  ▲
+                                </button>
+                                <button
+                                  disabled={idx === currentCategoryProducts.length - 1}
+                                  onClick={() => {
+                                    if (idx < currentCategoryProducts.length - 1) {
+                                      const nextProd = currentCategoryProducts[idx + 1];
+                                      setLocalOrganizerProducts(prev => {
+                                        const list = [...prev];
+                                        const idxA = list.findIndex(x => x.id === p.id);
+                                        const idxB = list.findIndex(x => x.id === nextProd.id);
+                                        const temp = list[idxA];
+                                        list[idxA] = list[idxB];
+                                        list[idxB] = temp;
+                                        return list;
+                                      });
+                                    }
+                                  }}
+                                  className="p-1.5 bg-white hover:bg-slate-200 border border-slate-200 rounded text-slate-500 hover:text-slate-800 disabled:opacity-30 transition"
+                                >
+                                  ▼
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -953,12 +1358,22 @@ export default function AdminDashboard() {
                         <span>Edytuj towary</span>
                       </button>
                       
-                      <button
-                        onClick={() => window.open(`/offer/${o.slug}`, '_blank')}
-                        className="bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 p-2 rounded-lg transition"
+                      <a
+                        href={`/offer/${o.slug}?preview=true`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 p-2 rounded-lg transition inline-flex items-center justify-center"
                         title="Otwórz ofertę"
                       >
                         <Eye size={14} />
+                      </a>
+
+                      <button
+                        onClick={() => handleDeleteOffer(o.id)}
+                        className="bg-white border border-slate-200 hover:bg-red-50 text-slate-450 hover:text-[#CD2628] hover:border-red-200 p-2 rounded-lg transition"
+                        title="Usuń ofertę"
+                      >
+                        <X size={14} />
                       </button>
                     </div>
                   </div>
@@ -1147,77 +1562,314 @@ export default function AdminDashboard() {
 
         {/* TAB 5: STATS */}
         {activeTab === 'stats' && !selectedOfferForEdit && (
-          <div className="space-y-6">
-            {/* Revenue per client */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-              <h3 className="font-bold text-sm text-slate-800 border-b border-slate-100 pb-3 mb-4">Obrót per klient</h3>
-              {clients.length === 0 ? <p className="text-xs text-slate-400 text-center py-8">Brak klientów</p> : (
-                <div className="space-y-3">
-                  {clients.map(c => {
-                    const clientOrders = orders.filter(o => o.clientEmail === c.email || o.clientNip === c.nip);
-                    const rev = clientOrders.reduce((s, o) => s + o.totalValue, 0);
-                    const maxRev = Math.max(...clients.map(cl => orders.filter(o => o.clientEmail === cl.email).reduce((s, o) => s + o.totalValue, 0)), 1);
-                    return (
-                      <div key={c.id} className="flex items-center gap-4">
-                        <div className="w-40 text-xs font-bold text-slate-700 truncate flex-shrink-0">{c.companyName}</div>
-                        <div className="flex-1 bg-slate-100 rounded-full h-3 overflow-hidden">
-                          <div className="h-full bg-[#1C60B0] rounded-full transition-all" style={{ width: `${(rev / maxRev) * 100}%` }} />
-                        </div>
-                        <div className="text-xs font-bold text-slate-700 w-24 text-right flex-shrink-0">{rev.toFixed(2)} PLN</div>
-                        <div className="text-[10px] text-slate-400 w-10 flex-shrink-0">{clientOrders.length} zam.</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+          <div className="space-y-8 animate-fade-in text-slate-800">
+            
+            {/* Dynamic Metric Cards */}
+            {(() => {
+              const totalOrdersCount = orders.length;
+              const totalRevenue = orders.reduce((s, o) => s + o.totalValue, 0);
+              const averageOrderValue = totalOrdersCount > 0 ? totalRevenue / totalOrdersCount : 0;
+              const totalItemsSold = orders.reduce((sum, o) => sum + o.items.reduce((s, item) => s + item.quantity, 0), 0);
+              
+              // Calculate category performance
+              const categoryStats: { [cat: string]: { qty: number; revenue: number } } = {};
+              orders.forEach(o => {
+                o.items.forEach(item => {
+                  const prod = offerProducts.find(p => p.sku === item.sku);
+                  const cat = (prod?.category || 'Zabawki').toUpperCase().trim();
+                  if (!categoryStats[cat]) {
+                    categoryStats[cat] = { qty: 0, revenue: 0 };
+                  }
+                  categoryStats[cat].qty += item.quantity;
+                  categoryStats[cat].revenue += item.price * item.quantity;
+                });
+              });
 
-            {/* Best-selling products from order items */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-              <h3 className="font-bold text-sm text-slate-800 border-b border-slate-100 pb-3 mb-4">Najlepiej sprzedające się produkty</h3>
-              {(() => {
-                const counts: { [sku: string]: { name: string; sku: string; qty: number; revenue: number } } = {};
-                orders.forEach(o => o.items.forEach(item => {
-                  if (!counts[item.sku]) counts[item.sku] = { name: item.name, sku: item.sku, qty: 0, revenue: 0 };
-                  counts[item.sku].qty += item.quantity;
-                  counts[item.sku].revenue += item.price * item.quantity;
+              // Bestselling products
+              const productCounts: { [sku: string]: { name: string; sku: string; qty: number; revenue: number; imgUrl?: string } } = {};
+              orders.forEach(o => o.items.forEach(item => {
+                if (!productCounts[item.sku]) {
+                  const prod = offerProducts.find(p => p.sku === item.sku);
+                  productCounts[item.sku] = { 
+                    name: item.name, 
+                    sku: item.sku, 
+                    qty: 0, 
+                    revenue: 0,
+                    imgUrl: prod?.imageUrl 
+                  };
+                }
+                productCounts[item.sku].qty += item.quantity;
+                productCounts[item.sku].revenue += item.price * item.quantity;
+              }));
+              const topProductsSorted = Object.values(productCounts).sort((a, b) => b.qty - a.qty).slice(0, 10);
+
+              // Client detailed stats
+              const detailedClientStats = clients.map(c => {
+                const clientOrders = orders.filter(o => o.clientEmail === c.email || o.clientNip === c.nip);
+                const totalSpent = clientOrders.reduce((sum, o) => sum + o.totalValue, 0);
+                const avgVal = clientOrders.length > 0 ? totalSpent / clientOrders.length : 0;
+                
+                const clientCategories: { [cat: string]: number } = {};
+                clientOrders.forEach(o => o.items.forEach(item => {
+                  const prod = offerProducts.find(p => p.sku === item.sku);
+                  const cat = (prod?.category || 'Zabawki').toUpperCase().trim();
+                  clientCategories[cat] = (clientCategories[cat] || 0) + item.quantity;
                 }));
-                const sorted = Object.values(counts).sort((a, b) => b.qty - a.qty).slice(0, 10);
-                return sorted.length === 0 ? <p className="text-xs text-slate-400 text-center py-8">Brak danych zamówień</p> : (
-                  <table className="w-full text-xs">
-                    <thead><tr className="text-slate-400 border-b border-slate-100"><th className="py-2 text-left">Produkt</th><th className="py-2 text-right">SKU</th><th className="py-2 text-right">Szt.</th><th className="py-2 text-right">Przychód</th></tr></thead>
-                    <tbody>{sorted.map((p, i) => (
-                      <tr key={p.sku} className="border-b border-slate-50 hover:bg-slate-50">
-                        <td className="py-2 font-semibold text-slate-700 max-w-xs truncate">{i + 1}. {p.name}</td>
-                        <td className="py-2 text-right font-mono text-slate-500">{p.sku}</td>
-                        <td className="py-2 text-right font-bold text-[#1C60B0]">{p.qty}</td>
-                        <td className="py-2 text-right font-bold text-emerald-600">{p.revenue.toFixed(2)} PLN</td>
-                      </tr>
-                    ))}</tbody>
-                  </table>
-                );
-              })()}
-            </div>
+                const topCat = Object.entries(clientCategories).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Brak';
+                const lastOrd = clientOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+                const lastOrderDate = lastOrd ? new Date(lastOrd.createdAt).toLocaleString('pl-PL') : 'Brak zamówień';
 
-            {/* Orders by hour */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-              <h3 className="font-bold text-sm text-slate-800 border-b border-slate-100 pb-3 mb-4">Zamówienia wg godziny dnia</h3>
-              {(() => {
-                const hourCounts = Array(24).fill(0);
-                orders.forEach(o => { const h = new Date(o.createdAt).getHours(); hourCounts[h]++; });
-                const maxH = Math.max(...hourCounts, 1);
-                return (
-                  <div className="flex items-end gap-1 h-24">
-                    {hourCounts.map((count, h) => (
-                      <div key={h} className="flex-1 flex flex-col items-center gap-1">
-                        <div className="w-full bg-[#1C60B0] rounded-sm transition-all" style={{ height: `${(count / maxH) * 80}px`, minHeight: count > 0 ? '4px' : '0' }} />
-                        <span className="text-[8px] text-slate-400">{h}</span>
+                return {
+                  ...c,
+                  ordersCount: clientOrders.length,
+                  totalSpent,
+                  avgOrderValue: avgVal,
+                  topCategory: topCat,
+                  lastOrderDate
+                };
+              }).sort((a, b) => b.totalSpent - a.totalSpent);
+
+              // Orders by hour distribution
+              const hourCounts = Array(24).fill(0);
+              orders.forEach(o => { 
+                const h = new Date(o.createdAt).getHours(); 
+                if (h >= 0 && h < 24) hourCounts[h]++; 
+              });
+              const maxHourCount = Math.max(...hourCounts, 1);
+
+              // Orders by day of week distribution
+              const dayNames = ['Niedziela', 'Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota'];
+              const dayCounts = Array(7).fill(0);
+              orders.forEach(o => {
+                const d = new Date(o.createdAt).getDay();
+                if (d >= 0 && d < 7) dayCounts[d]++;
+              });
+              const maxDayCount = Math.max(...dayCounts, 1);
+
+              return (
+                <div className="space-y-8">
+                  {/* KPI Cards Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-2">
+                      <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Łączny obrót netto</span>
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-2xl font-black text-slate-800">{totalRevenue.toFixed(2)} PLN</span>
+                        <DollarSign className="text-emerald-500" size={18} />
                       </div>
-                    ))}
+                      <div className="text-[10px] text-slate-500 font-medium">Na podstawie zrealizowanych koszyków</div>
+                    </div>
+
+                    <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-2">
+                      <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Średnia wartość zamówienia</span>
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-2xl font-black text-slate-800">{averageOrderValue.toFixed(2)} PLN</span>
+                        <ClipboardList className="text-[#1C60B0]" size={18} />
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-medium">AOV dla zamówień B2B</div>
+                    </div>
+
+                    <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-2">
+                      <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Łącznie sprzedanych sztuk</span>
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-2xl font-black text-slate-800">{totalItemsSold} szt.</span>
+                        <ShoppingCart className="text-indigo-500" size={18} />
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-medium">Suma towarów wydanych z magazynu</div>
+                    </div>
+
+                    <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-2">
+                      <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Zarejestrowane zamówienia</span>
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-2xl font-black text-slate-800">{totalOrdersCount}</span>
+                        <Clock className="text-rose-500" size={18} />
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-medium">Liczba wszystkich transakcji</div>
+                    </div>
                   </div>
-                );
-              })()}
-            </div>
+
+                  {/* Client purchasing behavior */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                    <div>
+                      <h3 className="font-black text-slate-800 text-sm">Szczegółowa analityka zakupowa klientów B2B</h3>
+                      <p className="text-[10px] text-slate-400">Kompleksowe podsumowanie obrotów, średniej wartości zamówienia, najczęściej wybieranej kategorii oraz ostatniej aktywności.</p>
+                    </div>
+
+                    {detailedClientStats.length === 0 ? (
+                      <p className="text-xs text-slate-400 text-center py-8">Brak aktywnych klientów</p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="border-b border-slate-200 text-slate-400 font-bold bg-slate-50">
+                              <th className="p-3">Firma</th>
+                              <th className="p-3">E-mail / Login</th>
+                              <th className="p-3 text-center">Zamówienia</th>
+                              <th className="p-3 text-right">Suma wydatków</th>
+                              <th className="p-3 text-right">Średni koszyk</th>
+                              <th className="p-3">Główna kategoria</th>
+                              <th className="p-3 text-right">Ostatnie zamówienie</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {detailedClientStats.map(c => (
+                              <tr key={c.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition">
+                                <td className="p-3 font-bold text-slate-850">{c.companyName}</td>
+                                <td className="p-3 text-slate-500 font-mono">{c.email}</td>
+                                <td className="p-3 text-center font-bold text-[#1C60B0]">{c.ordersCount}</td>
+                                <td className="p-3 text-right font-extrabold text-slate-800">{c.totalSpent.toFixed(2)} PLN</td>
+                                <td className="p-3 text-right font-semibold text-slate-600">{c.avgOrderValue.toFixed(2)} PLN</td>
+                                <td className="p-3">
+                                  <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px] font-bold border border-slate-200">{c.topCategory}</span>
+                                </td>
+                                <td className="p-3 text-right text-slate-500 font-mono text-[10px]">{c.lastOrderDate}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Charts Row */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    {/* Hourly Distribution */}
+                    <div className="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                      <div>
+                        <h3 className="font-bold text-sm text-slate-800">Rozkład godzinowy zamówień B2B</h3>
+                        <p className="text-[10px] text-slate-400">Analiza godzin, w których klienci najchętniej składają zamówienia.</p>
+                      </div>
+
+                      <div className="flex items-end gap-1 h-36 pt-4 border-b border-slate-150 pb-1">
+                        {hourCounts.map((count, h) => (
+                          <div key={h} className="flex-1 flex flex-col items-center gap-1 group relative">
+                            <div className="absolute bottom-full mb-1 bg-slate-800 text-white text-[9px] px-1 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity font-bold pointer-events-none whitespace-nowrap z-10">
+                              {count} zam.
+                            </div>
+                            <div 
+                              className="w-full bg-[#1C60B0] hover:bg-[#1A54A5] rounded-t-sm transition-all duration-500" 
+                              style={{ height: `${(count / maxHourCount) * 110}px`, minHeight: count > 0 ? '4px' : '0' }} 
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex justify-between text-[9px] text-slate-400 font-mono px-1">
+                        <span>00:00</span>
+                        <span>06:00</span>
+                        <span>12:00</span>
+                        <span>18:00</span>
+                        <span>23:00</span>
+                      </div>
+                    </div>
+
+                    {/* Day of Week Distribution */}
+                    <div className="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                      <div>
+                        <h3 className="font-bold text-sm text-slate-800">Dni tygodnia o najwyższej sprzedaży</h3>
+                        <p className="text-[10px] text-slate-400">Rozkład liczby transakcji w poszczególnych dniach tygodnia.</p>
+                      </div>
+
+                      <div className="space-y-2.5 pt-2">
+                        {dayNames.map((name, d) => {
+                          const count = dayCounts[d];
+                          const percent = maxDayCount > 0 ? (count / maxDayCount) * 100 : 0;
+                          return (
+                            <div key={d} className="flex items-center gap-3">
+                              <div className="w-24 text-[10px] font-bold text-slate-600 truncate">{name}</div>
+                              <div className="flex-1 bg-slate-100 rounded-full h-3 overflow-hidden">
+                                <div 
+                                  className="h-full bg-gradient-to-r from-[#1C60B0] to-indigo-500 rounded-full transition-all duration-500" 
+                                  style={{ width: `${percent}%` }} 
+                                />
+                              </div>
+                              <div className="text-[10px] font-extrabold text-slate-700 w-12 text-right">{count} zam.</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Categories Performance */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                    <div>
+                      <h3 className="font-bold text-sm text-slate-800">Podział sprzedaży według kategorii towarowych</h3>
+                      <p className="text-[10px] text-slate-400">Przychód oraz liczba sztuk sprzedanych w ramach poszczególnych grup produktowych.</p>
+                    </div>
+
+                    {Object.keys(categoryStats).length === 0 ? (
+                      <p className="text-xs text-slate-400 text-center py-8">Brak danych kategorii</p>
+                    ) : (
+                      <div className="space-y-4">
+                        {Object.entries(categoryStats).map(([cat, stats]) => {
+                          const maxCatRev = Math.max(...Object.values(categoryStats).map(s => s.revenue), 1);
+                          const percent = (stats.revenue / maxCatRev) * 100;
+                          return (
+                            <div key={cat} className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 p-3 bg-slate-50 border border-slate-150 rounded-xl">
+                              <div className="w-full md:w-48 text-xs font-bold text-slate-850 truncate">{cat}</div>
+                              <div className="flex-1 bg-slate-200 rounded-full h-3 overflow-hidden">
+                                <div 
+                                  className="h-full bg-[#1C60B0] rounded-full transition-all duration-500" 
+                                  style={{ width: `${percent}%` }} 
+                                />
+                              </div>
+                              <div className="flex items-center justify-between md:justify-end gap-6 flex-shrink-0 text-xs font-bold text-slate-700">
+                                <span>{stats.qty} szt.</span>
+                                <span className="w-28 text-right text-emerald-600">{stats.revenue.toFixed(2)} PLN</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Best Selling Products */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                    <div>
+                      <h3 className="font-bold text-sm text-slate-800">Top 10 bestsellerów produktowych (B2B)</h3>
+                      <p className="text-[10px] text-slate-400">Najczęściej zamawiane produkty uszeregowane według liczby sprzedanych sztuk.</p>
+                    </div>
+
+                    {topProductsSorted.length === 0 ? (
+                      <p className="text-xs text-slate-400 text-center py-8">Brak danych sprzedaży produktów</p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="border-b border-slate-200 text-slate-400 font-bold bg-slate-50">
+                              <th className="p-3">Zdjęcie</th>
+                              <th className="p-3">Produkt</th>
+                              <th className="p-3">SKU</th>
+                              <th className="p-3 text-right">Sprzedane (szt.)</th>
+                              <th className="p-3 text-right">Przychód</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {topProductsSorted.map((p, i) => (
+                              <tr key={p.sku} className="border-b border-slate-100 hover:bg-slate-50/50 transition">
+                                <td className="p-3">
+                                  <div className="w-10 h-10 bg-white border border-slate-200 rounded p-1 flex items-center justify-center overflow-hidden">
+                                    {p.imgUrl ? (
+                                      <img src={p.imgUrl} alt={p.name} className="max-h-full max-w-full object-contain" />
+                                    ) : (
+                                      <div className="w-full h-full bg-slate-100 rounded flex items-center justify-center text-[8px] text-slate-400 font-bold">BRAK</div>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="p-3 font-bold text-slate-800 max-w-xs truncate">{i + 1}. {p.name}</td>
+                                <td className="p-3 font-mono text-slate-550">{p.sku}</td>
+                                <td className="p-3 text-right font-extrabold text-[#1C60B0]">{p.qty}</td>
+                                <td className="p-3 text-right font-extrabold text-emerald-600">{p.revenue.toFixed(2)} PLN</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 
