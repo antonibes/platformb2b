@@ -17,6 +17,7 @@ interface Product {
   price: number;
   originalPrice: number;
   imageUrl: string;
+  _fallbackImage?: string;
   packaging: string;
   stock: number;
   discountRate: number;
@@ -637,7 +638,12 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                             src={product.imageUrl}
                             alt={product.name}
                             className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform duration-300 p-3"
-                            onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23f1f5f9"/><text x="50" y="55" text-anchor="middle" fill="%2394a3b8" font-size="11" font-family="sans-serif">Brak zdjęcia</text></svg>'; }}
+                            onError={(e) => {
+                              const fb = product._fallbackImage;
+                              if (fb && (e.target as HTMLImageElement).src !== fb) {
+                                (e.target as HTMLImageElement).src = fb;
+                              }
+                            }}
                           />
                           {product.stock <= 10 && (
                             <span className="absolute top-2 right-2 bg-[#CD2628] text-white text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider shadow z-10">
@@ -788,7 +794,9 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                   cart.map((item) => (
                     <div key={item.id} className="flex space-x-4 p-3 border border-slate-150 rounded-xl bg-slate-50 relative group">
                       <div className="w-16 h-16 rounded-lg overflow-hidden bg-white border border-slate-200 flex-shrink-0">
-                        <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" fill="%23f1f5f9"/></svg>'; }} />
+                        <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover"
+                          onError={(e) => { if (item._fallbackImage && (e.target as HTMLImageElement).src !== item._fallbackImage) (e.target as HTMLImageElement).src = item._fallbackImage; }}
+                        />
                       </div>
                       
                       <div className="flex-1 min-w-0">
@@ -1070,7 +1078,12 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                   src={selectedProductDetails.imageUrl} 
                   alt={selectedProductDetails.name} 
                   className="max-h-full max-w-full object-contain"
-                  onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="200" height="200" fill="%23f1f5f9"/><text x="100" y="108" text-anchor="middle" fill="%2394a3b8" font-size="14" font-family="sans-serif">Brak zdjęcia</text></svg>'; }}
+                  onError={(e) => {
+                    const fb = selectedProductDetails._fallbackImage;
+                    if (fb && (e.target as HTMLImageElement).src !== fb) {
+                      (e.target as HTMLImageElement).src = fb;
+                    }
+                  }}
                 />
               </div>
 

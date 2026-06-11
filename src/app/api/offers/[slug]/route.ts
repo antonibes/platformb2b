@@ -28,13 +28,17 @@ export async function GET(
     // Apply customer discount if user is logged in
     let discountRate = 0;
 
-    // Map products — always compute imageUrl from SKU to use local assets
-    // Frontend handles missing images gracefully via onError
+    // Map products — compute imageUrl from SKU (normalize SKU: trim .0 decimal if number)
+    const FALLBACK_IMG = 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&auto=format&fit=crop&q=60';
     const productsWithPrices = products.map(p => {
-      const computedImageUrl = `/products/product_${p.sku}.jpeg`;
+      // Normalize SKU — Excel sometimes gives "127972.0" instead of "127972"
+      const normalizedSku = String(p.sku).replace(/\.0+$/, '').trim();
+      const computedImageUrl = `/products/product_${normalizedSku}.jpeg`;
       return {
         ...p,
+        sku: normalizedSku,
         imageUrl: computedImageUrl,
+        _fallbackImage: p.imageUrl && p.imageUrl.startsWith('http') ? p.imageUrl : FALLBACK_IMG,
         originalPrice: p.originalPrice || p.price,
         price: p.price,
         discountRate: p.discountRate || 0
