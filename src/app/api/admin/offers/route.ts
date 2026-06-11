@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import * as XLSX from 'xlsx';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export const dynamic = 'force-dynamic';
 
@@ -198,10 +200,21 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Image URL: if empty, use fallback
-      const imageUrl = (rawImage && String(rawImage).trim().startsWith('http'))
-        ? String(rawImage).trim()
-        : `https://images.unsplash.com/photo-1596464716127-f2a82984de30?w=500&auto=format&fit=crop&q=60`;
+      // Image URL priority:
+      // 1. Local file /public/products/product_{SKU}.jpeg
+      // 2. URL from Excel column (if starts with http)
+      // 3. Fallback Unsplash placeholder
+      const skuStr = String(sku).trim();
+      const localImagePath = path.join(process.cwd(), 'public', 'products', `product_${skuStr}.jpeg`);
+      const localImageUrl = `/products/product_${skuStr}.jpeg`;
+      let imageUrl: string;
+      if (fs.existsSync(localImagePath)) {
+        imageUrl = localImageUrl;
+      } else if (rawImage && String(rawImage).trim().startsWith('http')) {
+        imageUrl = String(rawImage).trim();
+      } else {
+        imageUrl = `https://images.unsplash.com/photo-1596464716127-f2a82984de30?w=500&auto=format&fit=crop&q=60`;
+      }
 
       // Skip row if no meaningful SKU or name
       if (!sku && !name) return;
