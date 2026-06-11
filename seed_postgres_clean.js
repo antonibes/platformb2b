@@ -104,22 +104,21 @@ async function run() {
     const category = String(row[2] || 'ZABAWKI').trim();
     const name = String(row[4] || '').trim();
     const rawPrice = row[6]; // CENA NETTO is in column G (index 6)
-    const pcb = row[10]; // PCB is in column K (index 10)
+    const pcb = row[11]; // PCB is in column L (index 11)
     const description = String(row[5] || '').trim(); // Opis is in column F (index 5)
     
-    // Parse age from column L (index 11)
-    const rawAge = row[11];
+    // Parse age from column M (index 12)
+    const rawAge = row[12];
     let age = '3+';
-    if (rawAge !== undefined && rawAge !== '') {
-      const parsedAge = parseInt(String(rawAge).trim(), 10);
-      if (!isNaN(parsedAge)) {
-        if (parsedAge >= 12) {
-          age = `${parsedAge}m+`;
-        } else {
-          age = `${parsedAge}+`;
-        }
+    if (rawAge !== undefined && rawAge !== null && String(rawAge).trim() !== '') {
+      const str = String(rawAge).trim().toLowerCase();
+      const isMonths = str.includes('m') || str.includes('mies') || str.includes('mc') || str.includes('m-cy');
+      const numMatch = str.match(/\d+/);
+      if (numMatch) {
+        const num = parseInt(numMatch[0], 10);
+        age = isMonths ? `${num}m+` : `${num}+`;
       } else {
-        age = String(rawAge).trim();
+        age = String(rawAge).trim() || '3+';
       }
     }
     
@@ -133,7 +132,7 @@ async function run() {
     }
     if (isNaN(price) || price <= 0) continue;
     
-    const packaging = pcb ? `Karton: ${pcb} szt.` : 'opak. 1 szt.';
+    const packaging = pcb ? `PCB ${pcb}` : 'PCB 1';
     const stock = 100 + Math.floor(Math.random() * 200);
     
     // Get image from map (using exact drawing row coordinate)

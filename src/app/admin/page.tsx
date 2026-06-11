@@ -86,6 +86,9 @@ interface Product {
   packaging: string;
   stock: number;
   description?: string;
+  age?: string;
+  discountRate?: number;
+  originalPrice?: number;
 }
 
 export default function AdminDashboard() {
@@ -128,7 +131,7 @@ export default function AdminDashboard() {
   const [showAddClient, setShowAddClient] = useState(false);
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [newClient, setNewClient] = useState({ email: '', password: '', companyName: '', nip: '', discountRate: '0' });
-  const [newProduct, setNewProduct] = useState({ name: '', sku: '', ean: '', category: '', price: '', stock: '100', packaging: 'opak. 1 szt.', imageUrl: '', age: '3+', description: '' });
+  const [newProduct, setNewProduct] = useState({ name: '', sku: '', ean: '', category: '', price: '', stock: '100', packaging: 'PCB 1', imageUrl: '', age: '3+', description: '', discountRate: '0', originalPrice: '' });
 
   // 1. Session check
   useEffect(() => {
@@ -214,7 +217,10 @@ export default function AdminDashboard() {
           stock: editingProduct.stock,
           packaging: editingProduct.packaging,
           imageUrl: editingProduct.imageUrl,
-          description: editingProduct.description
+          description: editingProduct.description,
+          age: editingProduct.age || '3+',
+          discountRate: editingProduct.discountRate || 0,
+          originalPrice: editingProduct.originalPrice || editingProduct.price
         })
       });
 
@@ -367,11 +373,26 @@ export default function AdminDashboard() {
     e.preventDefault();
     if (!selectedOfferForEdit) return;
     try {
-      const res = await fetch('/api/admin/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add', offerId: selectedOfferForEdit.id, ...newProduct, price: parseFloat(newProduct.price), stock: parseInt(newProduct.stock) }) });
+      const priceVal = parseFloat(newProduct.price) || 0;
+      const discountRateVal = parseFloat(newProduct.discountRate) || 0;
+      const originalPriceVal = newProduct.originalPrice ? parseFloat(newProduct.originalPrice) : priceVal;
+      const res = await fetch('/api/admin/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add',
+          offerId: selectedOfferForEdit.id,
+          ...newProduct,
+          price: priceVal,
+          stock: parseInt(newProduct.stock) || 100,
+          discountRate: discountRateVal / 100,
+          originalPrice: originalPriceVal
+        })
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setOfferProducts(prev => [...prev, data.product]);
-      setNewProduct({ name: '', sku: '', ean: '', category: '', price: '', stock: '100', packaging: 'opak. 1 szt.', imageUrl: '', age: '3+', description: '' });
+      setNewProduct({ name: '', sku: '', ean: '', category: '', price: '', stock: '100', packaging: 'PCB 1', imageUrl: '', age: '3+', description: '', discountRate: '0', originalPrice: '' });
       setShowAddProduct(false);
     } catch (err: any) { alert(`Błąd: ${err.message}`); }
   };
@@ -1241,8 +1262,46 @@ export default function AdminDashboard() {
                 <div><label className="block text-slate-500 font-semibold mb-1">Stan (szt.)</label><input type="number" value={newProduct.stock} onChange={e => setNewProduct({...newProduct, stock: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
                 <div><label className="block text-slate-500 font-semibold mb-1">Kategoria</label><input value={newProduct.category} onChange={e => setNewProduct({...newProduct, category: e.target.value})} placeholder="ZABAWKI" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
                 <div><label className="block text-slate-500 font-semibold mb-1">Wiek</label><input value={newProduct.age} onChange={e => setNewProduct({...newProduct, age: e.target.value})} placeholder="3+" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
+                <div><label className="block text-slate-500 font-semibold mb-1">Pakowanie zbiorcze (PCB)</label><input value={newProduct.packaging} onChange={e => setNewProduct({...newProduct, packaging: e.target.value})} placeholder="PCB 1" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Rabat (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={newProduct.discountRate}
+                    onChange={(e) => {
+                      const pct = e.target.value;
+                      const discountRate = parseFloat(pct) || 0;
+                      const priceVal = parseFloat(newProduct.price) || 0;
+                      const originalPrice = discountRate > 0 ? (priceVal / (1 - discountRate / 100)).toFixed(2) : priceVal.toString();
+                      setNewProduct({ ...newProduct, discountRate: pct, originalPrice });
+                    }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]"
+                    placeholder="np. 50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Cena przed rabatem (PLN)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={newProduct.originalPrice}
+                    onChange={(e) => {
+                      const origPrice = e.target.value;
+                      const origPriceVal = parseFloat(origPrice) || 0;
+                      const priceVal = parseFloat(newProduct.price) || 0;
+                      const discountRate = origPriceVal > priceVal ? Math.round(((origPriceVal - priceVal) / origPriceVal) * 100).toString() : '0';
+                      setNewProduct({ ...newProduct, originalPrice: origPrice, discountRate });
+                    }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]"
+                    placeholder="Opcjonalnie"
+                  />
+                </div>
               </div>
               <div><label className="block text-slate-500 font-semibold mb-1">URL zdjecia</label><input type="url" value={newProduct.imageUrl} onChange={e => setNewProduct({...newProduct, imageUrl: e.target.value})} placeholder="https://..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
+              <div><label className="block text-slate-500 font-semibold mb-1">Opis produktu</label><textarea rows={3} value={newProduct.description} onChange={e => setNewProduct({...newProduct, description: e.target.value})} placeholder="Opis i specyfikacja..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
               <button type="submit" className="w-full bg-[#1C60B0] text-white font-bold py-2.5 rounded-xl text-xs transition hover:bg-[#1A54A5]">Dodaj produkt do oferty</button>
             </form>
           </div>
@@ -1326,7 +1385,12 @@ export default function AdminDashboard() {
                   min="0"
                   required
                   value={editingProduct.price}
-                  onChange={(e) => setEditingProduct({ ...editingProduct, price: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => {
+                    const price = parseFloat(e.target.value) || 0;
+                    const discountRate = editingProduct.discountRate || 0;
+                    const originalPrice = discountRate > 0 ? parseFloat((price / (1 - discountRate)).toFixed(2)) : price;
+                    setEditingProduct({ ...editingProduct, price, originalPrice });
+                  }}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-[#1C60B0]"
                 />
               </div>
@@ -1340,6 +1404,52 @@ export default function AdminDashboard() {
                   value={editingProduct.stock}
                   onChange={(e) => setEditingProduct({ ...editingProduct, stock: parseInt(e.target.value, 10) || 0 })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-500 font-semibold mb-1">Rekomendowany wiek</label>
+                <input
+                  type="text"
+                  value={editingProduct.age || ''}
+                  onChange={(e) => setEditingProduct({ ...editingProduct, age: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]"
+                  placeholder="np. 3+"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-500 font-semibold mb-1">Rabat (%)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={Math.round((editingProduct.discountRate || 0) * 100)}
+                  onChange={(e) => {
+                    const pct = parseFloat(e.target.value) || 0;
+                    const discountRate = pct / 100;
+                    const originalPrice = discountRate > 0 ? parseFloat((editingProduct.price / (1 - discountRate)).toFixed(2)) : editingProduct.price;
+                    setEditingProduct({ ...editingProduct, discountRate, originalPrice });
+                  }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]"
+                  placeholder="np. 50"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-500 font-semibold mb-1">Cena przed rabatem (PLN)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={editingProduct.originalPrice || editingProduct.price}
+                  onChange={(e) => {
+                    const originalPrice = parseFloat(e.target.value) || 0;
+                    const discountRate = originalPrice > editingProduct.price ? parseFloat(((originalPrice - editingProduct.price) / originalPrice).toFixed(4)) : 0;
+                    setEditingProduct({ ...editingProduct, originalPrice, discountRate });
+                  }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]"
+                  placeholder="np. 100.00"
                 />
               </div>
 

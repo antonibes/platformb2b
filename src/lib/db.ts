@@ -36,6 +36,8 @@ export interface Product {
   stock: number;
   description?: string;
   age?: string;
+  discountRate?: number;
+  originalPrice?: number;
 }
 
 export interface OrderItem {
@@ -169,7 +171,9 @@ function mapProduct(row: any): Product {
     packaging: row.packaging,
     stock: parseInt(row.stock, 10),
     description: row.description || undefined,
-    age: row.age || undefined
+    age: row.age || undefined,
+    discountRate: row.discount_rate !== undefined && row.discount_rate !== null ? parseFloat(row.discount_rate) : 0,
+    originalPrice: row.original_price !== undefined && row.original_price !== null ? parseFloat(row.original_price) : parseFloat(row.price)
   };
 }
 
@@ -339,7 +343,7 @@ export const db = {
     findByOfferId: async (offerId: string): Promise<Product[]> => {
       const sql = getSql();
       if (sql) {
-        const rows = await sql`SELECT * FROM products WHERE offer_id = ${offerId} ORDER BY name ASC`;
+        const rows = await sql`SELECT * FROM products WHERE offer_id = ${offerId} ORDER BY id ASC`;
         return rows.map(mapProduct);
       }
       return readDb().products.filter(p => p.offerId === offerId);
@@ -356,8 +360,8 @@ export const db = {
         let index = 1;
         
         newProducts.forEach((p, i) => {
-          const id = `prod-${Date.now()}-${i}`;
-          placeholders.push(`($${index}, $${index + 1}, $${index + 2}, $${index + 3}, $${index + 4}, $${index + 5}, $${index + 6}, $${index + 7}, $${index + 8}, $${index + 9}, $${index + 10}, $${index + 11})`);
+          const id = `prod-${Date.now()}-${String(i).padStart(6, '0')}`;
+          placeholders.push(`($${index}, $${index + 1}, $${index + 2}, $${index + 3}, $${index + 4}, $${index + 5}, $${index + 6}, $${index + 7}, $${index + 8}, $${index + 9}, $${index + 10}, $${index + 11}, $${index + 12}, $${index + 13})`);
           values.push(
             id,
             p.offerId,
@@ -370,14 +374,16 @@ export const db = {
             p.packaging,
             p.stock,
             p.description || null,
-            p.age || null
+            p.age || null,
+            p.discountRate || 0,
+            p.originalPrice || p.price
           );
-          addedProducts.push({ ...p, id });
-          index += 12;
+          addedProducts.push({ ...p, id, discountRate: p.discountRate || 0, originalPrice: p.originalPrice || p.price });
+          index += 14;
         });
         
         const query = `
-          INSERT INTO products (id, offer_id, sku, ean, category, name, price, image_url, packaging, stock, description, age)
+          INSERT INTO products (id, offer_id, sku, ean, category, name, price, image_url, packaging, stock, description, age, discount_rate, original_price)
           VALUES ${placeholders.join(', ')}
         `;
         
@@ -387,7 +393,12 @@ export const db = {
       
       const current = readDb();
       newProducts.forEach((p, index) => {
-        const prod = { ...p, id: `prod-${Date.now()}-${index}` };
+        const prod = { 
+          ...p, 
+          id: `prod-${Date.now()}-${String(index).padStart(6, '0')}`,
+          discountRate: p.discountRate || 0,
+          originalPrice: p.originalPrice || p.price
+        };
         current.products.push(prod);
         addedProducts.push(prod);
       });
@@ -406,7 +417,8 @@ export const db = {
               category = ${merged.category || 'Zabawki'}, name = ${merged.name},
               price = ${merged.price}, image_url = ${merged.imageUrl},
               packaging = ${merged.packaging}, stock = ${merged.stock},
-              description = ${merged.description || null}, age = ${merged.age || null}
+              description = ${merged.description || null}, age = ${merged.age || null},
+              discount_rate = ${merged.discountRate || 0}, original_price = ${merged.originalPrice || merged.price}
           WHERE id = ${id}
         `;
         return merged;

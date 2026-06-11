@@ -26,12 +26,19 @@ export async function GET() {
  */
 function parseAge(rawAge: any): string {
   if (rawAge === undefined || rawAge === null || String(rawAge).trim() === '') return '3+';
-  const str = String(rawAge).trim();
-  const num = parseInt(str, 10);
-  if (!isNaN(num)) {
-    return num >= 12 ? `${num}m+` : `${num}+`;
+  const str = String(rawAge).trim().toLowerCase();
+  
+  // Check if it's explicitly months
+  const isMonths = str.includes('m') || str.includes('mies') || str.includes('mc') || str.includes('m-cy');
+  
+  // Extract the first number
+  const numMatch = str.match(/\d+/);
+  if (numMatch) {
+    const num = parseInt(numMatch[0], 10);
+    return isMonths ? `${num}m+` : `${num}+`;
   }
-  return str || '3+';
+  
+  return String(rawAge).trim() || '3+';
 }
 
 /**
@@ -97,20 +104,40 @@ export async function POST(request: NextRequest) {
     const headerRow = rawRows[headerRowIdx].map(h => String(h).trim().toLowerCase());
     const dataRows = rawRows.slice(headerRowIdx + 1);
 
-    // Build index map: Polish/English column name -> column index
-    const colIdx: { [key: string]: number } = {};
-    headerRow.forEach((h, i) => {
-      colIdx[h] = i;
-    });
+    // Helper to find column index using fuzzy search
+    const findColIdx = (...terms: string[]): number | undefined => {
+      for (const term of terms) {
+        const t = term.toLowerCase().trim();
+        // 1. Exact match
+        const exactIdx = headerRow.findIndex(h => h === t);
+        if (exactIdx !== -1) return exactIdx;
+        
+        // 2. Substring match
+        const subIdx = headerRow.findIndex(h => h.includes(t));
+        if (subIdx !== -1) return subIdx;
+      }
+      return undefined;
+    };
 
-    // Helper to get value by several possible column names
-    const getCol = (row: any[], ...names: string[]): any => {
-      for (const n of names) {
-        const idx = colIdx[n];
-        if (idx !== undefined && idx < row.length) {
-          const v = row[idx];
-          if (v !== undefined && v !== null && String(v).trim() !== '') return v;
-        }
+    // Precalculate column indices
+    const skuIdx = findColIdx('kod', 'sku', 'symbol', 'indeks', 'artyk');
+    const eanIdx = findColIdx('ean', 'barcod', 'kod kresk');
+    const nameIdx = findColIdx('nazwa', 'name', 'tytuł', 'tytul', 'towar', 'produkt');
+    const catIdx = findColIdx('kategoria', 'category', 'dział', 'dzial', 'grupa');
+    const descIdx = findColIdx('opis', 'description', 'desc', 'specyfikacja');
+    const priceIdx = findColIdx('cena netto', 'cena hurt', 'cena b2b', 'cena', 'netto');
+    const stockIdx = findColIdx('zamówienie ilość', 'stan', 'stock', 'ilosc', 'ilość', 'dostęp', 'dostep');
+    const pcbIdx = findColIdx('pcb', 'opakowanie', 'karton', 'zbiorcz');
+    const ageIdx = findColIdx('wiek', 'age', 'od lat');
+    const imgIdx = findColIdx('zdjęcie', 'zdjecie', 'image', 'obraz', 'foto');
+    const discountIdx = findColIdx('rabat', 'discount', 'promocja', 'obniżka');
+    const origPriceIdx = findColIdx('cena detaliczna', 'cena regularna', 'cena przed rabatem', 'cena katalogowa', 'detaliczna', 'katalogowa');
+
+    // Helper to get value by index
+    const getVal = (row: any[], idx: number | undefined): any => {
+      if (idx !== undefined && idx < row.length) {
+        const v = row[idx];
+        if (v !== undefined && v !== null && String(v).trim() !== '') return v;
       }
       return undefined;
     };
@@ -124,29 +151,50 @@ export async function POST(request: NextRequest) {
       // Skip completely empty rows
       if (row.every(c => c === '' || c === null || c === undefined)) return;
 
-      const sku = getCol(row, 'kod', 'sku', 'code') ?? `ASK-${1000 + index}`;
-      const ean = getCol(row, 'ean', 'kod ean', 'kodean', 'barcode') ?? `590${Math.floor(1000000000 + Math.random() * 9000000000)}`;
-      const name = getCol(row, 'nazwa', 'name', 'tytuł', 'tytul', 'product') ?? `Produkt ${index + 1}`;
-      const category = getCol(row, 'kategoria', 'category', 'dział', 'dzial') ?? 'ZABAWKI';
-      const description = getCol(row, 'opis', 'description', 'desc') ?? '';
-      const rawPrice = getCol(row, 'cena netto', 'cena', 'netto', 'price', 'wartość netto');
-      const rawStock = getCol(row, 'zamówienie ilość', 'stan', 'stock', 'ilosc', 'ilość', 'qty');
-      const rawPackaging = getCol(row, 'pcb', 'opakowanie', 'packaging', 'karton');
-      const rawAge = getCol(row, 'wiek', 'age', 'wiek od');
-      const rawImage = getCol(row, 'zdjęcie', 'zdjecie', 'image', 'image_url', 'zdjęcia');
+      const sku = getVal(row, skuIdx) ?? `ASK-${1000 + index}`;
+      const ean = getVal(row, eanIdx) ?? `590${Math.floor(1000000000 + Math.random() * 9000000000)}`;
+      const name = getVal(row, nameIdx) ?? `Produkt ${index + 1}`;
+      const category = getVal(row, catIdx) ?? 'ZABAWKI';
+      const description = getVal(row, descIdx) ?? '';
+      const rawPrice = getVal(row, priceIdx);
+      const rawStock = getVal(row, stockIdx);
+      const rawPackaging = getVal(row, pcbIdx);
+      const rawAge = getVal(row, ageIdx);
+      const rawImage = getVal(row, imgIdx);
+      const rawDiscount = getVal(row, discountIdx);
+      const rawOrigPrice = getVal(row, origPriceIdx);
 
       const priceVal = parsePrice(rawPrice);
       const stockVal = parseStock(rawStock);
       const ageVal = parseAge(rawAge);
 
+      // Parse discount rate (e.g. "50%" or "0.5" or "50")
+      let discountRateVal = 0;
+      if (rawDiscount !== undefined) {
+        const cleanDiscount = String(rawDiscount).replace('%', '').trim();
+        const parsedD = parseFloat(cleanDiscount);
+        if (!isNaN(parsedD)) {
+          discountRateVal = parsedD > 1 ? parsedD / 100 : parsedD;
+        }
+      }
+
+      // Parse original price
+      let origPriceVal = priceVal;
+      if (rawOrigPrice !== undefined) {
+        origPriceVal = parsePrice(rawOrigPrice);
+      } else if (discountRateVal > 0) {
+        origPriceVal = parseFloat((priceVal / (1 - discountRateVal)).toFixed(2));
+      }
+
       // PCB/Packaging formatting
-      let packagingStr = 'opak. 1 szt.';
+      let packagingStr = 'PCB 1';
       if (rawPackaging !== undefined && rawPackaging !== null && String(rawPackaging).trim() !== '') {
-        const pcbNum = parseInt(String(rawPackaging), 10);
+        const pcbNum = parseInt(String(rawPackaging).trim(), 10);
         if (!isNaN(pcbNum) && pcbNum > 0) {
-          packagingStr = `Karton: ${pcbNum} szt.`;
+          packagingStr = `PCB ${pcbNum}`;
         } else {
-          packagingStr = String(rawPackaging).trim();
+          const cleanPkg = String(rawPackaging).trim();
+          packagingStr = cleanPkg.toLowerCase().startsWith('pcb') ? cleanPkg : `PCB ${cleanPkg}`;
         }
       }
 
@@ -170,6 +218,8 @@ export async function POST(request: NextRequest) {
         stock: stockVal,
         description: String(description).trim(),
         age: ageVal,
+        discountRate: discountRateVal,
+        originalPrice: parseFloat(origPriceVal.toFixed(2))
       });
     });
 

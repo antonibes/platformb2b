@@ -27,21 +27,14 @@ export async function GET(
 
     // Apply customer discount if user is logged in
     let discountRate = 0;
-    if (userId) {
-      const user = await db.users.findById(userId);
-      if (user && user.role === 'client') {
-        discountRate = user.discountRate;
-      }
-    }
 
-    // Map products with calculated prices
+    // Map products preserving product-specific discounts, ignoring customer B2B discounts per client request
     const productsWithPrices = products.map(p => {
-      const finalPrice = discountRate > 0 ? parseFloat((p.price * (1 - discountRate)).toFixed(2)) : p.price;
       return {
         ...p,
-        originalPrice: p.price,
-        price: finalPrice,
-        discountRate: discountRate
+        originalPrice: p.originalPrice || p.price,
+        price: p.price,
+        discountRate: p.discountRate || 0
       };
     });
 

@@ -36,6 +36,16 @@ interface CartItem extends Product {
   quantity: number;
 }
 
+const formatPCB = (pkg: string) => {
+  if (!pkg) return 'PCB 1';
+  const cleaned = pkg.trim();
+  if (cleaned.toLowerCase().startsWith('pcb')) return cleaned;
+  const numMatch = cleaned.match(/\d+/);
+  if (numMatch) return `PCB ${numMatch[0]}`;
+  return `PCB ${cleaned}`;
+};
+
+
 export default function OfferPage({ params }: { params: { slug: string } }) {
   const router = useRouter();
   const { slug } = params;
@@ -45,6 +55,8 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [discountRate, setDiscountRate] = useState(0);
   const [search, setSearch] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedBrand, setSelectedBrand] = useState('all');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -237,30 +249,71 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
     }
   };
 
+  const getProductBrand = (product: Product): string => {
+    const nameLower = product.name.toLowerCase();
+    if (nameLower.includes('genialny dzieciak')) return 'GENIALNY DZIECIAK';
+    if (nameLower.includes('pomysłowy skrzat') || nameLower.includes('pomyslowy skrzat')) return 'POMYSŁOWY SKRZAT';
+    if (nameLower.includes('klocki małych geniuszy') || nameLower.includes('klocki malych geniuszy')) return 'KLOCKI MAŁYCH GENIUSZY';
+    
+    const cat = (product.category || '').toUpperCase();
+    if (cat.includes('GENIALNY DZIECIAK')) return 'GENIALNY DZIECIAK';
+    if (cat.includes('POMYSŁOWY SKRZAT')) return 'POMYSŁOWY SKRZAT';
+    if (cat.includes('KLOCKI MAŁYCH GENIUSZY')) return 'KLOCKI MAŁYCH GENIUSZY';
+    
+    return 'Pozostałe';
+  };
+
+  const uniqueCategories = useMemo(() => {
+    const cats = new Set<string>();
+    products.forEach(p => {
+      if (p.category) {
+        cats.add(p.category.toUpperCase().trim());
+      }
+    });
+    return Array.from(cats).sort((a, b) => a.localeCompare(b, 'pl'));
+  }, [products]);
+
   const filteredProducts = useMemo(() => {
-    return products.filter(p => 
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.sku.toLowerCase().includes(search.toLowerCase()) ||
-      p.ean.includes(search)
-    );
-  }, [products, search]);
+    return products.filter(p => {
+      const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) ||
+                            p.sku.toLowerCase().includes(search.toLowerCase()) ||
+                            p.ean.includes(search);
+      
+      const matchesCategory = selectedCategory === 'all' || 
+                              (p.category && p.category.toUpperCase().trim() === selectedCategory.toUpperCase().trim());
+      
+      const brand = getProductBrand(p);
+      const matchesBrand = selectedBrand === 'all' || brand === selectedBrand;
+      
+      return matchesSearch && matchesCategory && matchesBrand;
+    });
+  }, [products, search, selectedCategory, selectedBrand]);
 
   const groupedProducts = useMemo(() => {
     const groups: { [key: string]: Product[] } = {};
+    const categoryOrder: string[] = [];
     filteredProducts.forEach(product => {
-      const cat = product.category || 'ZABAWKI';
+      const cat = (product.category || 'ZABAWKI').toUpperCase().trim();
       if (!groups[cat]) {
         groups[cat] = [];
+        categoryOrder.push(cat);
       }
       groups[cat].push(product);
     });
-    return groups;
+    
+    const sortedGroups: { [key: string]: Product[] } = {};
+    categoryOrder.forEach(key => {
+      sortedGroups[key] = groups[key];
+    });
+      
+    return sortedGroups;
   }, [filteredProducts]);
 
   const cartSummary = useMemo(() => {
     const totalCount = cart.reduce((sum, item) => sum + item.quantity, 0);
     const totalNet = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    return { totalCount, totalNet };
+    const totalOriginal = cart.reduce((sum, item) => sum + ((item.originalPrice || item.price) * item.quantity), 0);
+    return { totalCount, totalNet, totalOriginal };
   }, [cart]);
 
   const handleExportCSV = () => {
@@ -427,15 +480,11 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
             {user ? (
               <div className="hidden sm:flex flex-col items-end text-xs">
                 <span className="font-bold text-slate-800">{user.companyName}</span>
-                <span className="text-emerald-600 font-extrabold flex items-center space-x-0.5">
-                  <span>Rabat B2B:</span>
-                  <span className="bg-emerald-50 px-1.5 py-0.5 rounded text-[10px] border border-emerald-100">-{(discountRate * 100).toFixed(0)}%</span>
-                </span>
+                <span className="text-slate-500 font-medium">Klient B2B (Ceny Netto)</span>
               </div>
             ) : (
               <div className="hidden sm:flex flex-col items-end text-xs">
-                <span className="font-semibold text-slate-500">Sesja Gościa (Bez rabatu)</span>
-                <span className="text-[10px] text-slate-400">Zaloguj się, aby naliczyć upust B2B</span>
+                <span className="font-semibold text-slate-500">Sesja Gościa (Ceny Netto)</span>
               </div>
             )}
 
@@ -472,34 +521,80 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
 
       {/* Offer Banner info */}
       <div className="bg-[#1C60B0]/5 border-b border-[#1C60B0]/10">
-        <div className="max-w-[95%] w-full mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-2 text-xs text-[#1C60B0]">
+        <div className="max-w-[95%] w-full mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-2 text-xs text-[#1C60B0]">
           <div className="flex items-center space-x-2 font-medium">
             <Package size={14} className="text-[#1C60B0]" />
-            <span>Pakowanie zbiorcze (PCB). Minimalne zamówienie to 1 opakowanie handlowe.</span>
+            <span>Pakowanie zbiorcze (PCB). Minimalne zamówienie to 1 PCB.</span>
           </div>
-          {discountRate > 0 && (
-            <div className="bg-emerald-500 text-white font-bold px-2 py-0.5 rounded text-[10px] shadow-sm">
-              Twój rabat B2B został pomyślnie uwzględniony w poniższych cenach!
-            </div>
-          )}
+          <div className="bg-emerald-600 text-white font-extrabold px-3 py-1 rounded-full text-[11px] shadow-sm flex items-center space-x-1">
+            <span>🚚</span>
+            <span>Darmowa dostawa od 600 zł netto przed rabatem!</span>
+          </div>
         </div>
       </div>
 
       {/* Search & Filter bar */}
-      <div className="max-w-[95%] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
-          <div className="relative w-full md:max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input
-              type="text"
-              placeholder="Filtruj produkty po nazwie, SKU lub EAN..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1C60B0]/50 text-sm"
-            />
+      <div className="max-w-[95%] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-4">
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col lg:flex-row gap-4 items-center justify-between">
+          <div className="flex flex-col md:flex-row gap-3 w-full lg:max-w-3xl">
+            {/* Search Input */}
+            <div className="relative flex-grow">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <input
+                type="text"
+                placeholder="Filtruj produkty po nazwie, SKU lub EAN..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1C60B0]/50 text-sm font-medium"
+              />
+            </div>
+            
+            {/* Category Dropdown */}
+            <div className="w-full md:w-64">
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#1C60B0]/50 text-sm font-medium bg-white"
+              >
+                <option value="all">Wszystkie kategorie</option>
+                {uniqueCategories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
           </div>
-          <div className="text-xs text-slate-500 self-end md:self-center font-medium">
-            Wyświetlono: <span className="font-extrabold text-slate-800 bg-slate-100 px-2 py-1 rounded-lg">{filteredProducts.length}</span> pozycji zabawek
+
+          <div className="text-xs text-slate-500 self-end lg:self-center font-medium shrink-0">
+            Wyświetlono: <span className="font-extrabold text-slate-800 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">{filteredProducts.length}</span> pozycji zabawek
+          </div>
+        </div>
+
+        {/* Brand Filter Row */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
+          <span className="text-xs font-bold text-slate-450 uppercase tracking-wider block">Filtruj według marki:</span>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { id: 'all', label: 'Wszystkie marki' },
+              { id: 'GENIALNY DZIECIAK', label: 'Genialny Dzieciak' },
+              { id: 'POMYSŁOWY SKRZAT', label: 'Pomysłowy Skrzat' },
+              { id: 'KLOCKI MAŁYCH GENIUSZY', label: 'Klocki Małych Geniuszy' },
+              { id: 'Pozostałe', label: 'Pozostałe marki' }
+            ].map(brand => {
+              const isActive = selectedBrand === brand.id;
+              return (
+                <button
+                  key={brand.id}
+                  onClick={() => setSelectedBrand(brand.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                    isActive
+                      ? 'bg-[#1C60B0] border-[#1C60B0] text-white shadow-sm shadow-blue-500/20'
+                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:border-slate-300'
+                  }`}
+                >
+                  {brand.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -540,12 +635,17 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                             className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform duration-300 p-3"
                           />
                           {product.stock <= 10 && (
-                            <span className="absolute top-2 right-2 bg-[#CD2628] text-white text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider shadow">
+                            <span className="absolute top-2 right-2 bg-[#CD2628] text-white text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider shadow z-10">
                               Limit: {product.stock}
                             </span>
                           )}
+                          {product.discountRate > 0 && (
+                            <span className="absolute top-2 left-2 bg-[#CD2628] text-white text-[10px] font-black px-2 py-0.5 rounded-lg shadow-md z-10 animate-bounce">
+                              -{Math.round(product.discountRate * 100)}%
+                            </span>
+                          )}
                           {inCart && (
-                            <span className="absolute top-2 left-2 bg-[#1C60B0] text-white text-[8px] font-black px-1.5 py-0.5 rounded-full flex items-center space-x-0.5 shadow">
+                            <span className="absolute bottom-2 left-2 bg-[#1C60B0] text-white text-[8px] font-black px-1.5 py-0.5 rounded-full flex items-center space-x-0.5 shadow z-10">
                               <Check size={8} />
                               <span>{inCart.quantity} szt.</span>
                             </span>
@@ -574,7 +674,7 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                                 <User size={10} className="inline text-[#4F709C]" /> {product.age || '3+'}
                               </span>
                               <span className="bg-[#EDF2F9] text-[#4F709C] px-2.5 py-0.5 rounded-lg text-[10px] font-semibold border border-blue-50/50">
-                                {product.packaging.includes('Karton:') ? 'PCB ' + product.packaging.replace(/[^\d]/g, '') : product.packaging}
+                                {formatPCB(product.packaging)}
                               </span>
                             </div>
                           </div>
@@ -742,7 +842,7 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                       <span className="font-semibold text-slate-700">{cart.length}</span>
                     </div>
                     <div className="flex justify-between text-xs text-slate-500">
-                      <span>Opakowań zbiorczych (kartonów):</span>
+                      <span>Opakowań zbiorczych (PCB):</span>
                       <span className="font-semibold text-slate-700">{cartSummary.totalCount} szt.</span>
                     </div>
                     <div className="flex justify-between items-baseline pt-2.5 border-t border-slate-200">
@@ -750,6 +850,24 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                       <div className="text-right">
                         <span className="text-xl font-black text-[#1C60B0]">{cartSummary.totalNet.toFixed(2)} PLN</span>
                         <span className="block text-[9px] text-slate-400 font-light">Cena nie zawiera podatku VAT</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Dynamic Free Shipping Alert */}
+                  <div className={`p-3 rounded-xl border text-xs font-semibold flex items-center justify-between ${
+                    cartSummary.totalOriginal >= 600 
+                      ? 'bg-emerald-50 border-emerald-250 text-emerald-800 animate-pulse' 
+                      : 'bg-amber-50 border-amber-250 text-amber-800'
+                  }`}>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-base">🚚</span>
+                      <div>
+                        {cartSummary.totalOriginal >= 600 ? (
+                          <span>Kwalifikujesz się do <strong>DARMOWEJ DOSTAWY!</strong></span>
+                        ) : (
+                          <span>Darmowa dostawa od 600 zł netto przed rabatem (brakuje <strong>{(600 - cartSummary.totalOriginal).toFixed(2).replace('.', ',')} PLN</strong>)</span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -976,8 +1094,8 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                       <span className="text-slate-700 font-bold">{selectedProductDetails.age || '3+'}</span>
                     </div>
                     <div>
-                      <span className="text-slate-400 block uppercase tracking-wider text-[9px] font-bold">Pakowanie zbiorcze:</span>
-                      <span className="text-slate-700 font-bold">{selectedProductDetails.packaging}</span>
+                      <span className="text-slate-400 block uppercase tracking-wider text-[9px] font-bold">Pakowanie zbiorcze (PCB):</span>
+                      <span className="text-slate-700 font-bold">{formatPCB(selectedProductDetails.packaging)}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 block uppercase tracking-wider text-[9px] font-bold">Dostępność:</span>
@@ -985,9 +1103,25 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                     </div>
                     <div>
                       <span className="text-slate-400 block uppercase tracking-wider text-[9px] font-bold">Cena katalogowa netto:</span>
-                      <span className="text-slate-800 font-black text-[#CD2628] text-sm">
-                        {selectedProductDetails.price.toFixed(2)} PLN
-                      </span>
+                      {selectedProductDetails.discountRate > 0 ? (
+                        <div className="flex flex-col">
+                          <span className="text-slate-450 line-through text-xs font-semibold">
+                            {selectedProductDetails.originalPrice.toFixed(2).replace('.', ',')} PLN
+                          </span>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-base font-black text-[#CD2628]">
+                              {selectedProductDetails.price.toFixed(2).replace('.', ',')} PLN
+                            </span>
+                            <span className="bg-[#CD2628] text-white font-extrabold text-[10px] px-1.5 py-0.5 rounded shadow animate-pulse">
+                              -{Math.round(selectedProductDetails.discountRate * 100)}%
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-slate-800 font-black text-[#CD2628] text-sm">
+                          {selectedProductDetails.price.toFixed(2).replace('.', ',')} PLN
+                        </span>
+                      )}
                     </div>
                   </div>
 
