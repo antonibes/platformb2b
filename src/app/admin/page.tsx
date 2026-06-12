@@ -388,12 +388,12 @@ export default function AdminDashboard() {
   useEffect(() => {
     const storedUser = localStorage.getItem('askato_user');
     if (!storedUser) {
-      router.push('/');
+      router.push('/login');
       return;
     }
     const parsedUser = JSON.parse(storedUser);
     if (parsedUser.role !== 'admin') {
-      router.push('/');
+      router.push('/login');
       return;
     }
     setAdmin(parsedUser);
@@ -430,7 +430,7 @@ export default function AdminDashboard() {
 
   const handleLogout = () => {
     localStorage.removeItem('askato_user');
-    router.push('/');
+    router.push('/login');
   };
 
   // Fetch products when an offer is selected for editing
