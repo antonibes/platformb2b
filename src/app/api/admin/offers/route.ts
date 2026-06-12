@@ -295,34 +295,35 @@ export async function POST(request: NextRequest) {
       }
 
       // --- Image URL resolution (priority order) ---
-      // 1. Embedded image extracted from ZIP -> save it and use it
-      // 2. Local file already exists → use it directly
-      // 3. Excel has a URL → download & save locally → use local path
-      // 4. No URL in Excel → use Unsplash placeholder
+      // 1. Embedded image extracted from ZIP -> convert to Base64 data URL (works in serverless environments like Vercel)
+      // 2. Excel has an external HTTP URL -> use directly to avoid serverless function timeouts
+      // 3. Local file already exists -> use it
+      // 4. No image -> use placeholder
       const skuStr = String(sku).trim();
       const localImagePath = path.join(process.cwd(), 'public', 'products', `product_${skuStr}.jpeg`);
       const localImageUrl = `/products/product_${skuStr}.jpeg`;
       let imageUrl: string;
 
       if (skuToImageBuffer[skuStr]) {
+        const base64Str = skuToImageBuffer[skuStr].toString('base64');
+        imageUrl = `data:image/jpeg;base64,${base64Str}`;
         try {
           fs.mkdirSync(path.dirname(localImagePath), { recursive: true });
           fs.writeFileSync(localImagePath, skuToImageBuffer[skuStr]);
-          imageUrl = localImageUrl;
-        } catch (imgWriteErr) {
-          console.error(`Failed to write ZIP image for SKU ${skuStr}:`, imgWriteErr);
-          imageUrl = localImageUrl;
+        } catch (_) {
+          // Ignore write-only errors on serverless environments
+        }
+      } else if (rawImage && String(rawImage).trim().startsWith('http')) {
+        imageUrl = String(rawImage).trim();
+        try {
+          fs.mkdirSync(path.dirname(localImagePath), { recursive: true });
+          downloadAndSaveImage(imageUrl, localImagePath).catch(() => {});
+        } catch (_) {
+          // Ignore write-only errors on serverless environments
         }
       } else if (fs.existsSync(localImagePath)) {
-        // Already have it locally
         imageUrl = localImageUrl;
-      } else if (rawImage && String(rawImage).trim().startsWith('http')) {
-        // Try to download from Excel URL and store locally
-        const externalUrl = String(rawImage).trim();
-        const downloaded = await downloadAndSaveImage(externalUrl, localImagePath);
-        imageUrl = downloaded ? localImageUrl : externalUrl;
       } else {
-        // No image available — use placeholder
         imageUrl = `https://images.unsplash.com/photo-1596464716127-f2a82984de30?w=500&auto=format&fit=crop&q=60`;
       }
 
