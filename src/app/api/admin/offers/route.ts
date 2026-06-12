@@ -294,33 +294,34 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // --- Image URL resolution (priority order) ---
-      // 1. Embedded image extracted from ZIP -> convert to Base64 data URL (works in serverless environments like Vercel)
-      // 2. Excel has an external HTTP URL -> use directly to avoid serverless function timeouts
-      // 3. Local file already exists -> use it
-      // 4. No image -> use placeholder
+      // --- Image URL resolution ---
+      // 1. ZIP-extracted image → save to disk; if disk write fails (Vercel), fall back to base64
+      // 2. External HTTP URL in Excel → use directly
+      // 3. Local file already on disk → use it
+      // 4. Nothing found → placeholder
       const skuStr = String(sku).trim();
       const localImagePath = path.join(process.cwd(), 'public', 'products', `product_${skuStr}.jpeg`);
       const localImageUrl = `/products/product_${skuStr}.jpeg`;
       let imageUrl: string;
 
       if (skuToImageBuffer[skuStr]) {
-        const base64Str = skuToImageBuffer[skuStr].toString('base64');
-        imageUrl = `data:image/jpeg;base64,${base64Str}`;
+        // Try writing to local filesystem first (works in dev and local prod)
+        let wroteFile = false;
         try {
           fs.mkdirSync(path.dirname(localImagePath), { recursive: true });
           fs.writeFileSync(localImagePath, skuToImageBuffer[skuStr]);
+          wroteFile = true;
         } catch (_) {
-          // Ignore write-only errors on serverless environments
+          // Serverless environment — filesystem is read-only
+        }
+        if (wroteFile) {
+          imageUrl = localImageUrl;
+        } else {
+          // Vercel: store as compact base64 (only for this product, no timeout risk individually)
+          imageUrl = `data:image/jpeg;base64,${skuToImageBuffer[skuStr].toString('base64')}`;
         }
       } else if (rawImage && String(rawImage).trim().startsWith('http')) {
         imageUrl = String(rawImage).trim();
-        try {
-          fs.mkdirSync(path.dirname(localImagePath), { recursive: true });
-          downloadAndSaveImage(imageUrl, localImagePath).catch(() => {});
-        } catch (_) {
-          // Ignore write-only errors on serverless environments
-        }
       } else if (fs.existsSync(localImagePath)) {
         imageUrl = localImageUrl;
       } else {
