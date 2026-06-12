@@ -394,8 +394,12 @@ export const db = {
     findFeatured: async (): Promise<Offer | null> => {
       const sql = getSql();
       if (sql) {
-        const rows = await sql`SELECT * FROM offers WHERE is_featured = true LIMIT 1`;
-        if (rows.length > 0) return mapOffer(rows[0]);
+        try {
+          const rows = await sql`SELECT * FROM offers WHERE is_featured = true LIMIT 1`;
+          if (rows.length > 0) return mapOffer(rows[0]);
+        } catch {
+          // is_featured column may not exist yet in Neon — fall through
+        }
         // fall back to most recent active offer
         const recent = await sql`SELECT * FROM offers WHERE is_active = true ORDER BY created_at DESC LIMIT 1`;
         return recent.length > 0 ? mapOffer(recent[0]) : null;
@@ -406,8 +410,15 @@ export const db = {
     setFeatured: async (id: string): Promise<void> => {
       const sql = getSql();
       if (sql) {
-        await sql`UPDATE offers SET is_featured = false`;
-        await sql`UPDATE offers SET is_featured = true WHERE id = ${id}`;
+        try {
+          await sql`UPDATE offers SET is_featured = false`;
+          await sql`UPDATE offers SET is_featured = true WHERE id = ${id}`;
+        } catch {
+          // is_featured column missing — try to add it first, then retry
+          await sql`ALTER TABLE offers ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT false`;
+          await sql`UPDATE offers SET is_featured = false`;
+          await sql`UPDATE offers SET is_featured = true WHERE id = ${id}`;
+        }
         return;
       }
       const current = readDb();

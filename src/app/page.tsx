@@ -4,9 +4,13 @@ import { db } from '@/lib/db';
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
-  const featured = await db.offers.findFeatured();
-  if (featured) {
-    redirect(`/offer/${featured.slug}`);
+  try {
+    const featured = await db.offers.findFeatured();
+    if (featured) {
+      redirect(`/offer/${featured.slug}`);
+    }
+  } catch {
+    // DB unavailable — show fallback
   }
 
   return (
