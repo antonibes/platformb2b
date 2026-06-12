@@ -4,16 +4,17 @@ import { db } from '@/lib/db';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { clientId, password } = body;
+    const { clientId, email, password } = body;
+    const identifier = clientId || email;
 
-    if (!clientId || !password) {
+    if (!identifier || !password) {
       return NextResponse.json({ error: 'Identyfikator klienta i hasło są wymagane' }, { status: 400 });
     }
 
-    // Try login by clientId first, then fall back to email for admin
-    let user = await db.users.findByClientId(clientId);
+    // Try login by clientId first, then fall back to email
+    let user = await db.users.findByClientId(identifier);
     if (!user) {
-      user = await db.users.findByEmail(clientId); // admin still uses email
+      user = await db.users.findByEmail(identifier);
     }
 
     if (!user) {
