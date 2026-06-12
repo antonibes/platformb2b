@@ -65,6 +65,55 @@ function parseStock(raw: any): number {
 
 export async function POST(request: NextRequest) {
   try {
+    const contentType = request.headers.get('content-type') || '';
+
+    // ── JSON path: client parsed the XLSX in the browser ──────────────────────
+    if (contentType.includes('application/json')) {
+      const body = await request.json();
+      const { title, slug, products: rawProducts } = body;
+
+      if (!title || !slug) {
+        return NextResponse.json({ error: 'Brakujące parametry (tytuł lub slug)' }, { status: 400 });
+      }
+      if (!Array.isArray(rawProducts) || rawProducts.length === 0) {
+        return NextResponse.json({ error: 'Brak produktów w żądaniu' }, { status: 400 });
+      }
+
+      const cleanedSlug = slug.toLowerCase().trim().replace(/[^a-z0-9-_]/g, '-');
+      const existing = await db.offers.findBySlug(cleanedSlug);
+      if (existing) {
+        return NextResponse.json({ error: `Oferta o adresie /offer/${cleanedSlug} już istnieje` }, { status: 400 });
+      }
+
+      const PLACEHOLDER = 'https://images.unsplash.com/photo-1596464716127-f2a82984de30?w=500&auto=format&fit=crop&q=60';
+      const newOffer = await db.offers.create({ title, slug: cleanedSlug, isActive: true, isFeatured: false });
+
+      const parsedProducts = rawProducts.map((p: any) => ({
+        offerId: newOffer.id,
+        sku: String(p.sku || '').trim(),
+        ean: String(p.ean || '').trim(),
+        category: String(p.category || 'ZABAWKI').trim().toUpperCase(),
+        name: String(p.name || 'Produkt').trim(),
+        price: Math.max(0, parseFloat(p.price) || 0),
+        imageUrl: p.imageUrl || PLACEHOLDER,
+        packaging: String(p.packaging || 'PCB 1').trim(),
+        stock: Math.max(0, parseInt(p.stock, 10) || 100),
+        description: String(p.description || '').trim(),
+        age: String(p.age || '3+').trim(),
+        discountRate: parseFloat(p.discountRate) || 0,
+        originalPrice: Math.max(0, parseFloat(p.originalPrice) || parseFloat(p.price) || 0)
+      }));
+
+      const createdProducts = await db.products.createMany(parsedProducts);
+      return NextResponse.json({
+        success: true,
+        offer: newOffer,
+        products: createdProducts,
+        productsCount: createdProducts.length
+      });
+    }
+
+    // ── FormData path: legacy / fallback ──────────────────────────────────────
     const formData = await request.formData();
     const title = formData.get('title') as string;
     const slug = formData.get('slug') as string;

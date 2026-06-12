@@ -2,12 +2,202 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  BarChart3, PlusCircle, ClipboardList, LogOut, 
-  Upload, FileSpreadsheet, Eye, Users, DollarSign, Percent, 
+import {
+  BarChart3, PlusCircle, ClipboardList, LogOut,
+  Upload, FileSpreadsheet, Eye, Users, DollarSign, Percent,
   Download, AlertCircle, ShoppingCart, RefreshCw, Clock,
   CheckCircle, Terminal, Search, Edit3, X, FileText, Settings, Image
 } from 'lucide-react';
+
+// ─── Client-side XLSX parsing utilities ───────────────────────────────────────
+
+function _parseAgeC(rawAge: any): string {
+  if (rawAge === undefined || rawAge === null || String(rawAge).trim() === '') return '3+';
+  const str = String(rawAge).trim().toLowerCase();
+  const isMonths = str.includes('m') || str.includes('mies') || str.includes('mc') || str.includes('m-cy');
+  const numMatch = str.match(/\d+/);
+  if (numMatch) { const n = parseInt(numMatch[0], 10); return isMonths ? `${n}m+` : `${n}+`; }
+  return String(rawAge).trim() || '3+';
+}
+function _parsePriceC(raw: any): number {
+  if (raw == null) return 0;
+  if (typeof raw === 'number') return isNaN(raw) ? 0 : Math.max(0, raw);
+  const n = parseFloat(String(raw).replace(',', '.').replace(/[^\d.]/g, ''));
+  return isNaN(n) ? 0 : Math.max(0, n);
+}
+function _parseStockC(raw: any): number {
+  if (raw == null) return 100;
+  const n = parseInt(String(raw), 10);
+  return isNaN(n) ? 100 : Math.max(0, n);
+}
+
+async function compressImageToBase64(buf: ArrayBuffer, maxDim = 600, quality = 0.75): Promise<string> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(new Blob([buf]));
+    const img = new window.Image();
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, maxDim / Math.max(img.width || 1, img.height || 1));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round((img.width || 1) * scale);
+        canvas.height = Math.round((img.height || 1) * scale);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { resolve(''); return; }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(''); };
+    img.src = url;
+  });
+}
+
+async function parseXlsxClientSide(file: File): Promise<{ textProducts: any[]; imageMap: Record<string, ArrayBuffer> }> {
+  const XLSX = await import('xlsx');
+  const JSZip = (await import('jszip')).default;
+
+  const arrayBuffer = await file.arrayBuffer();
+  const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as any[][];
+
+  if (rawRows.length < 2) throw new Error('Plik jest pusty lub nie ma poprawnego formatu');
+
+  // Detect header row
+  let headerRowIdx = 0;
+  for (let i = 0; i < Math.min(rawRows.length, 5); i++) {
+    const r = rawRows[i].map((c: any) => String(c).toLowerCase());
+    if (r.some((c: string) => c === 'kod' || c === 'sku' || c === 'name' || c === 'nazwa')) { headerRowIdx = i; break; }
+  }
+  const headerRow = rawRows[headerRowIdx].map((h: any) => String(h).trim().toLowerCase());
+  const dataRows = rawRows.slice(headerRowIdx + 1);
+
+  const col = (...terms: string[]): number | undefined => {
+    for (const t of terms) {
+      const lo = t.toLowerCase().trim();
+      const e = headerRow.findIndex((h: string) => h === lo);
+      if (e !== -1) return e;
+      const s = headerRow.findIndex((h: string) => h.includes(lo));
+      if (s !== -1) return s;
+    }
+    return undefined;
+  };
+
+  const skuIdx = col('kod', 'sku', 'symbol', 'indeks', 'artyk');
+  const eanIdx = col('ean', 'barcod', 'kod kresk');
+  const nameIdx = col('nazwa', 'name', 'tytuł', 'tytul', 'towar', 'produkt');
+  const catIdx = col('kategoria', 'category', 'dział', 'dzial', 'grupa');
+  const descIdx = col('opis', 'description', 'desc', 'specyfikacja');
+  const priceIdx = col('cena netto', 'cena hurt', 'cena b2b', 'cena', 'netto');
+  const stockIdx = col('zamówienie ilość', 'stan', 'stock', 'ilosc', 'ilość', 'dostęp', 'dostep');
+  const pcbIdx = col('pcb', 'opakowanie', 'karton', 'zbiorcz');
+  const ageIdx = col('wiek', 'age', 'od lat');
+  const imgIdx = col('zdjęcie', 'zdjecie', 'image', 'obraz', 'foto');
+  const discountIdx = col('rabat', 'discount', 'promocja', 'obniżka');
+  const origPriceIdx = col('cena detaliczna', 'cena regularna', 'cena przed rabatem', 'cena katalogowa', 'detaliczna', 'katalogowa');
+
+  const gv = (row: any[], idx?: number) => {
+    if (idx !== undefined && idx < row.length) {
+      const v = row[idx];
+      if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+    }
+    return undefined;
+  };
+
+  // Extract embedded images from XLSX ZIP
+  const imageMap: Record<string, ArrayBuffer> = {};
+  try {
+    const zip = await JSZip.loadAsync(arrayBuffer);
+    const drawingFile = zip.file('xl/drawings/drawing1.xml');
+    const drawingRelsFile = zip.file('xl/drawings/_rels/drawing1.xml.rels');
+    if (drawingFile && drawingRelsFile && skuIdx !== undefined) {
+      const drawingXml = await drawingFile.async('string');
+      const drawingRelsXml = await drawingRelsFile.async('string');
+      const rels: Record<string, string> = {};
+      const relRx = /<Relationship[^>]*Id="(rId\d+)"[^>]*Target="([^"]+)"/g;
+      let m;
+      while ((m = relRx.exec(drawingRelsXml)) !== null) rels[m[1]] = m[2];
+      const anchors: { row: number; rId: string }[] = [];
+      const anchorRx = /<xdr:(?:twoCellAnchor|oneCellAnchor)[^>]*>([\s\S]*?)<\/xdr:(?:twoCellAnchor|oneCellAnchor)>/g;
+      while ((m = anchorRx.exec(drawingXml)) !== null) {
+        const block = m[1];
+        const rm = block.match(/<xdr:from>[\s\S]*?<xdr:row>(\d+)<\/xdr:row>/);
+        const rid = block.match(/(?:r:embed|r:id)="(rId\d+)"/);
+        if (rm && rid) anchors.push({ row: parseInt(rm[1], 10), rId: rid[1] });
+      }
+      for (const anchor of anchors) {
+        const target = rels[anchor.rId];
+        if (!target) continue;
+        const fname = target.split('/').pop() || '';
+        const mpath = `xl/drawings/${target}`.replace(/\/\.\.\//g, '/').replace('xl/drawings/../', 'xl/');
+        const mf = zip.file(mpath) || zip.file(`xl/media/${fname}`);
+        if (!mf) continue;
+        const imgBuf = await mf.async('arraybuffer');
+        let sku: string | null = null;
+        for (const offset of [0, 1, -1, 2, -2]) {
+          const tr = rawRows[anchor.row + offset];
+          if (tr && skuIdx !== undefined && tr[skuIdx]) {
+            const s = String(tr[skuIdx]).replace(/\.0+$/, '').trim();
+            if (s) { sku = s; break; }
+          }
+        }
+        if (sku) imageMap[sku] = imgBuf;
+      }
+    }
+  } catch { /* ZIP image extraction optional */ }
+
+  // Parse product rows (text data only — images sent separately)
+  const PLACEHOLDER = 'https://images.unsplash.com/photo-1596464716127-f2a82984de30?w=500&auto=format&fit=crop&q=60';
+  const textProducts: any[] = [];
+  for (let i = 0; i < dataRows.length; i++) {
+    const row = dataRows[i];
+    if (row.every((c: any) => c === '' || c === null || c === undefined)) continue;
+    const sku = gv(row, skuIdx) ?? `ASK-${1000 + i}`;
+    const ean = gv(row, eanIdx) ?? `590${Math.floor(1000000000 + Math.random() * 9000000000)}`;
+    const name = gv(row, nameIdx) ?? `Produkt ${i + 1}`;
+    if (!sku && !name) continue;
+    const rawPrice = gv(row, priceIdx);
+    const rawDiscount = gv(row, discountIdx);
+    const rawOrigPrice = gv(row, origPriceIdx);
+    const priceVal = _parsePriceC(rawPrice);
+    let discountRate = 0;
+    if (rawDiscount !== undefined) {
+      const d = parseFloat(String(rawDiscount).replace('%', '').trim());
+      if (!isNaN(d)) discountRate = d > 1 ? d / 100 : d;
+    }
+    let origPrice = priceVal;
+    if (rawOrigPrice !== undefined) origPrice = _parsePriceC(rawOrigPrice);
+    else if (discountRate > 0) origPrice = parseFloat((priceVal / (1 - discountRate)).toFixed(2));
+    const rawPkg = gv(row, pcbIdx);
+    let packaging = 'PCB 1';
+    if (rawPkg !== undefined && String(rawPkg).trim() !== '') {
+      const n = parseInt(String(rawPkg).trim(), 10);
+      if (!isNaN(n) && n > 0) packaging = `PCB ${n}`;
+      else { const c = String(rawPkg).trim(); packaging = c.toLowerCase().startsWith('pcb') ? c : `PCB ${c}`; }
+    }
+    const skuStr = String(sku).trim();
+    const rawImg = gv(row, imgIdx);
+    const imageUrl = (rawImg && String(rawImg).trim().startsWith('http')) ? String(rawImg).trim() : PLACEHOLDER;
+    textProducts.push({
+      sku: skuStr,
+      ean: String(ean).trim(),
+      category: String(gv(row, catIdx) ?? 'ZABAWKI').trim().toUpperCase(),
+      name: String(name).trim(),
+      price: parseFloat(priceVal.toFixed(2)),
+      imageUrl,
+      packaging,
+      stock: _parseStockC(gv(row, stockIdx)),
+      description: String(gv(row, descIdx) ?? '').trim(),
+      age: _parseAgeC(gv(row, ageIdx)),
+      discountRate,
+      originalPrice: parseFloat(origPrice.toFixed(2))
+    });
+  }
+  if (textProducts.length === 0) throw new Error('Nie znaleziono żadnych produktów w pliku. Sprawdź format kolumn.');
+  return { textProducts, imageMap };
+}
 
 interface AnalyticsSummary {
   totalViews: number;
@@ -115,6 +305,7 @@ export default function AdminDashboard() {
   const [newSlug, setNewSlug] = useState('');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState('');
   const [uploadError, setUploadError] = useState('');
   const [uploadSuccess, setUploadSuccess] = useState(false);
 
@@ -325,54 +516,71 @@ export default function AdminDashboard() {
     }
   };
 
-  // Create offer file upload handler
+  // Create offer — parses XLSX in the browser, sends small JSON requests to stay under Vercel limits
   const handleCreateOffer = async (e: React.FormEvent) => {
     e.preventDefault();
     setUploadError('');
     setUploadSuccess(false);
-    
+    setUploadProgress('');
+
     if (!uploadFile) {
       setUploadError('Wybierz plik Excel (.xlsx) lub CSV z produktami');
       return;
     }
 
     setUploading(true);
-    const formData = new FormData();
-    formData.append('title', newTitle);
-    formData.append('slug', newSlug);
-    formData.append('file', uploadFile);
-
     try {
+      // Step 1: parse XLSX client-side (no server involved yet)
+      setUploadProgress('Parsowanie pliku XLSX w przeglądarce...');
+      const { textProducts, imageMap } = await parseXlsxClientSide(uploadFile);
+
+      // Step 2: create offer + products (text data only, no images)
+      setUploadProgress(`Tworzenie oferty (${textProducts.length} produktów)...`);
       const res = await fetch('/api/admin/offers', {
         method: 'POST',
-        body: formData
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newTitle, slug: newSlug, products: textProducts })
       });
-
       let data: any;
-      try {
-        data = await res.json();
-      } catch {
-        if (res.status === 413) {
-          throw new Error('Plik jest za duży dla serwera (limit ~50 MB). Skompresuj XLSX lub usuń osadzone zdjęcia.');
-        }
-        throw new Error(`Serwer zwrócił nieoczekiwaną odpowiedź (${res.status}). Spróbuj ponownie.`);
+      try { data = await res.json(); } catch {
+        throw new Error(`Błąd serwera (${res.status}). Spróbuj ponownie.`);
       }
+      if (!res.ok) throw new Error(data.error || 'Nie udało się wgrać oferty');
 
-      if (!res.ok) {
-        throw new Error(data.error || 'Nie udało się wgrać oferty');
+      // Step 3: upload compressed images one by one (each request tiny: ~30-100 KB)
+      const createdProducts: any[] = data.products || [];
+      const skusWithImages = Object.keys(imageMap);
+      if (skusWithImages.length > 0) {
+        let done = 0;
+        for (const prod of createdProducts) {
+          const imgBuf = imageMap[prod.sku];
+          if (!imgBuf) continue;
+          done++;
+          setUploadProgress(`Wgrywanie zdjęć (${done}/${skusWithImages.length})...`);
+          try {
+            const b64 = await compressImageToBase64(imgBuf);
+            if (b64) {
+              await fetch('/api/admin/products', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ productId: prod.id, imageUrl: b64 })
+              });
+            }
+          } catch { /* skip failed image, rest continue */ }
+        }
       }
 
       setUploadSuccess(true);
+      setUploadProgress('');
       setNewTitle('');
       setNewSlug('');
       setUploadFile(null);
-      
       const fileInput = document.getElementById('offerFile') as HTMLInputElement;
       if (fileInput) fileInput.value = '';
-
       await refreshData();
     } catch (err: any) {
       setUploadError(err.message || 'Wystąpił błąd podczas wgrywania oferty.');
+      setUploadProgress('');
     } finally {
       setUploading(false);
     }
@@ -1343,7 +1551,7 @@ export default function AdminDashboard() {
                   ) : (
                     <Upload size={14} />
                   )}
-                  <span>{uploading ? 'Przetwarzanie wierszy...' : 'Wygeneruj Ofertę Askato'}</span>
+                  <span>{uploading ? (uploadProgress || 'Przetwarzanie...') : 'Wygeneruj Ofertę Askato'}</span>
                 </button>
 
               </form>
