@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Try login by clientId first, then fall back to email
-    let user = await db.users.findByClientId(identifier);
+    let user = await db.users.findByClientId(identifier).catch(() => null);
     if (!user) {
       user = await db.users.findByEmail(identifier);
     }

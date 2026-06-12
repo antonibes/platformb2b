@@ -253,8 +253,14 @@ export const db = {
     findByClientId: async (clientId: string): Promise<B2BUser | null> => {
       const sql = getSql();
       if (sql) {
-        const rows = await sql`SELECT * FROM b2b_users WHERE LOWER(client_id) = LOWER(${clientId}) LIMIT 1`;
-        return rows.length > 0 ? mapUser(rows[0]) : null;
+        try {
+          const rows = await sql`SELECT * FROM b2b_users WHERE LOWER(client_id) = LOWER(${clientId}) LIMIT 1`;
+          return rows.length > 0 ? mapUser(rows[0]) : null;
+        } catch {
+          // client_id column may not exist in current schema — fall back to email
+          const rows = await sql`SELECT * FROM b2b_users WHERE LOWER(email) = LOWER(${clientId}) LIMIT 1`;
+          return rows.length > 0 ? mapUser(rows[0]) : null;
+        }
       }
       return readDb().users.find(u => (u.clientId || '').toLowerCase() === clientId.toLowerCase()) || null;
     },
