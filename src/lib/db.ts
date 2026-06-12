@@ -7,12 +7,16 @@ const DB_FILE = path.join(process.cwd(), 'db.json');
 
 export interface B2BUser {
   id: string;
+  clientId: string;   // simple login identifier e.g. "misiek"
   email: string;
   passwordHash: string;
   companyName: string;
   nip: string;
-  discountRate: number; // e.g. 0.15 = 15% discount
+  phone?: string;
+  discountRate: number;
   role: 'admin' | 'client';
+  setupToken?: string; // one-time account setup token
+  setupComplete?: boolean;
 }
 
 export interface Offer {
@@ -20,6 +24,7 @@ export interface Offer {
   title: string;
   slug: string;
   isActive: boolean;
+  isFeatured: boolean;
   createdAt: string;
 }
 
@@ -152,12 +157,16 @@ function toUtcIsoString(dateInput: any): string {
 function mapUser(row: any): B2BUser {
   return {
     id: row.id,
-    email: row.email,
-    passwordHash: row.password_hash,
-    companyName: row.company_name,
-    nip: row.nip,
-    discountRate: parseFloat(row.discount_rate),
-    role: row.role as 'admin' | 'client'
+    clientId: row.client_id || row.email || row.id,
+    email: row.email || '',
+    passwordHash: row.password_hash || '',
+    companyName: row.company_name || '',
+    nip: row.nip || '',
+    phone: row.phone || '',
+    discountRate: parseFloat(row.discount_rate) || 0,
+    role: row.role as 'admin' | 'client',
+    setupToken: row.setup_token || undefined,
+    setupComplete: !!row.setup_complete
   };
 }
 
@@ -167,6 +176,7 @@ function mapOffer(row: any): Offer {
     title: row.title,
     slug: row.slug,
     isActive: !!row.is_active,
+    isFeatured: !!row.is_featured,
     createdAt: toUtcIsoString(row.created_at)
   };
 }
@@ -237,7 +247,23 @@ export const db = {
         const rows = await sql`SELECT * FROM b2b_users WHERE LOWER(email) = LOWER(${email}) LIMIT 1`;
         return rows.length > 0 ? mapUser(rows[0]) : null;
       }
-      return readDb().users.find(u => u.email.toLowerCase() === email.toLowerCase()) || null;
+      return readDb().users.find(u => u.email?.toLowerCase() === email.toLowerCase()) || null;
+    },
+    findByClientId: async (clientId: string): Promise<B2BUser | null> => {
+      const sql = getSql();
+      if (sql) {
+        const rows = await sql`SELECT * FROM b2b_users WHERE LOWER(client_id) = LOWER(${clientId}) LIMIT 1`;
+        return rows.length > 0 ? mapUser(rows[0]) : null;
+      }
+      return readDb().users.find(u => (u.clientId || '').toLowerCase() === clientId.toLowerCase()) || null;
+    },
+    findBySetupToken: async (token: string): Promise<B2BUser | null> => {
+      const sql = getSql();
+      if (sql) {
+        const rows = await sql`SELECT * FROM b2b_users WHERE setup_token = ${token} LIMIT 1`;
+        return rows.length > 0 ? mapUser(rows[0]) : null;
+      }
+      return readDb().users.find(u => u.setupToken === token) || null;
     },
     findById: async (id: string): Promise<B2BUser | null> => {
       const sql = getSql();
@@ -273,7 +299,11 @@ export const db = {
           UPDATE b2b_users 
           SET email = ${merged.email}, password_hash = ${merged.passwordHash}, 
               company_name = ${merged.companyName}, nip = ${merged.nip}, 
-              discount_rate = ${merged.discountRate}, role = ${merged.role}
+              discount_rate = ${merged.discountRate}, role = ${merged.role},
+              client_id = ${merged.clientId || merged.email},
+              phone = ${merged.phone || ''},
+              setup_token = ${merged.setupToken || null},
+              setup_complete = ${merged.setupComplete ? 1 : 0}
           WHERE id = ${id}
         `;
         return merged;
@@ -352,6 +382,29 @@ export const db = {
       }
       const current = readDb();
       current.offers = current.offers.filter(o => o.id !== id);
+      writeDb(current);
+    },
+    findFeatured: async (): Promise<Offer | null> => {
+      const sql = getSql();
+      if (sql) {
+        const rows = await sql`SELECT * FROM offers WHERE is_featured = true LIMIT 1`;
+        if (rows.length > 0) return mapOffer(rows[0]);
+        // fall back to most recent active offer
+        const recent = await sql`SELECT * FROM offers WHERE is_active = true ORDER BY created_at DESC LIMIT 1`;
+        return recent.length > 0 ? mapOffer(recent[0]) : null;
+      }
+      const all = readDb().offers;
+      return all.find(o => (o as any).isFeatured) || all.filter(o => o.isActive).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] || null;
+    },
+    setFeatured: async (id: string): Promise<void> => {
+      const sql = getSql();
+      if (sql) {
+        await sql`UPDATE offers SET is_featured = false`;
+        await sql`UPDATE offers SET is_featured = true WHERE id = ${id}`;
+        return;
+      }
+      const current = readDb();
+      current.offers = current.offers.map(o => ({ ...o, isFeatured: o.id === id }));
       writeDb(current);
     }
   },

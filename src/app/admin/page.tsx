@@ -347,8 +347,17 @@ export default function AdminDashboard() {
         method: 'POST',
         body: formData
       });
-      const data = await res.json();
-      
+
+      let data: any;
+      try {
+        data = await res.json();
+      } catch {
+        if (res.status === 413) {
+          throw new Error('Plik jest za duży dla serwera (limit ~50 MB). Skompresuj XLSX lub usuń osadzone zdjęcia.');
+        }
+        throw new Error(`Serwer zwrócił nieoczekiwaną odpowiedź (${res.status}). Spróbuj ponownie.`);
+      }
+
       if (!res.ok) {
         throw new Error(data.error || 'Nie udało się wgrać oferty');
       }
@@ -897,21 +906,22 @@ export default function AdminDashboard() {
                       {uniqueCategoriesList.map((cat, idx) => (
                         <div
                           key={cat}
-                          onClick={() => setSelectedOrganizerCategory(cat)}
-                          className={`group flex items-center justify-between p-2.5 rounded-xl border text-xs font-bold cursor-pointer transition-all ${
+                          className={`group flex items-center justify-between p-2.5 rounded-xl border text-xs font-bold transition-all ${
                             selectedOrganizerCategory === cat
                               ? 'bg-[#1C60B0] text-white border-[#1C60B0]'
                               : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
                           }`}
                         >
-                          <span className="truncate pr-2">{cat}</span>
-                          
+                          <span
+                            className="truncate pr-2 flex-1 cursor-pointer"
+                            onClick={() => setSelectedOrganizerCategory(cat)}
+                          >{cat}</span>
+
                           {/* Controls */}
                           <div className="flex items-center space-x-1.5 opacity-80 group-hover:opacity-100 flex-shrink-0">
                             {/* Rename */}
                             <button
-                              onClick={(e) => {
-                                e.stopPropagation();
+                              onClick={() => {
                                 const newName = prompt(`Zmień nazwę kategorii "${cat}" dla wszystkich produktów:`, cat);
                                 if (newName && newName.trim() && newName.trim().toUpperCase() !== cat) {
                                   const trimmedNew = newName.trim().toUpperCase();
@@ -937,15 +947,16 @@ export default function AdminDashboard() {
                             {/* Up */}
                             <button
                               disabled={idx === 0}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (idx > 0) {
-                                  const list = [...uniqueCategoriesList];
-                                  const temp = list[idx - 1];
-                                  list[idx - 1] = list[idx];
-                                  list[idx] = temp;
-                                  setUniqueCategoriesList(list);
-                                }
+                              onClick={() => {
+                                setUniqueCategoriesList(prev => {
+                                  const list = [...prev];
+                                  const currentIdx = list.indexOf(cat);
+                                  if (currentIdx <= 0) return prev;
+                                  const temp = list[currentIdx - 1];
+                                  list[currentIdx - 1] = list[currentIdx];
+                                  list[currentIdx] = temp;
+                                  return list;
+                                });
                               }}
                               className={`p-1 rounded hover:bg-black/10 disabled:opacity-30 transition ${
                                 selectedOrganizerCategory === cat ? 'text-white' : 'text-slate-400 hover:text-slate-700'
@@ -957,15 +968,16 @@ export default function AdminDashboard() {
                             {/* Down */}
                             <button
                               disabled={idx === uniqueCategoriesList.length - 1}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (idx < uniqueCategoriesList.length - 1) {
-                                  const list = [...uniqueCategoriesList];
-                                  const temp = list[idx + 1];
-                                  list[idx + 1] = list[idx];
-                                  list[idx] = temp;
-                                  setUniqueCategoriesList(list);
-                                }
+                              onClick={() => {
+                                setUniqueCategoriesList(prev => {
+                                  const list = [...prev];
+                                  const currentIdx = list.indexOf(cat);
+                                  if (currentIdx < 0 || currentIdx >= list.length - 1) return prev;
+                                  const temp = list[currentIdx + 1];
+                                  list[currentIdx + 1] = list[currentIdx];
+                                  list[currentIdx] = temp;
+                                  return list;
+                                });
                               }}
                               className={`p-1 rounded hover:bg-black/10 disabled:opacity-30 transition ${
                                 selectedOrganizerCategory === cat ? 'text-white' : 'text-slate-400 hover:text-slate-700'

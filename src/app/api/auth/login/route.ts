@@ -4,29 +4,32 @@ import { db } from '@/lib/db';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, password } = body;
+    const { clientId, password } = body;
 
-    if (!email || !password) {
-      return NextResponse.json({ error: 'E-mail i hasło są wymagane' }, { status: 400 });
+    if (!clientId || !password) {
+      return NextResponse.json({ error: 'Identyfikator klienta i hasło są wymagane' }, { status: 400 });
     }
 
-    const user = await db.users.findByEmail(email);
+    // Try login by clientId first, then fall back to email for admin
+    let user = await db.users.findByClientId(clientId);
     if (!user) {
-      return NextResponse.json({ error: 'Nieprawidłowy e-mail lub hasło' }, { status: 401 });
+      user = await db.users.findByEmail(clientId); // admin still uses email
     }
 
-    // In a production app, we would hash/check password with bcrypt
-    if (user.passwordHash !== password) {
-      return NextResponse.json({ error: 'Nieprawidłowy e-mail lub hasło' }, { status: 401 });
+    if (!user) {
+      return NextResponse.json({ error: 'Nieprawidłowy identyfikator lub hasło' }, { status: 401 });
     }
 
-    // Return user details without password
-    const { passwordHash, ...userSession } = user;
+    if (!user.passwordHash || user.passwordHash !== password) {
+      return NextResponse.json({ error: 'Nieprawidłowy identyfikator lub hasło' }, { status: 401 });
+    }
 
-    return NextResponse.json({
-      success: true,
-      user: userSession
-    });
+    if (user.setupToken && !user.setupComplete) {
+      return NextResponse.json({ error: 'Konto nie zostało jeszcze aktywowane. Sprawdź swój e-mail i dokończ rejestrację.' }, { status: 403 });
+    }
+
+    const { passwordHash, setupToken, ...userSession } = user;
+    return NextResponse.json({ success: true, user: userSession });
   } catch (error) {
     console.error('Error logging in:', error);
     return NextResponse.json({ error: 'Błąd serwera podczas logowania' }, { status: 500 });

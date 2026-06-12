@@ -9,6 +9,10 @@ const getSql = () => {
   return url ? neon(url) : null;
 };
 
+function generateToken(): string {
+  return `setup_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+}
+
 export async function GET() {
   try {
     const clients = (await db.users.findMany()).filter(u => u.role === 'client');
@@ -36,38 +40,50 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, client: updated });
     }
 
-    // Action: create new client
+    // Action: create new client (clientId-based, no password required at creation)
     if (action === 'create') {
-      const { email, password, companyName, nip, discountRate } = body;
-      if (!email || !password || !companyName) {
-        return NextResponse.json({ error: 'Email, hasło i nazwa firmy są wymagane' }, { status: 400 });
+      const { clientId, email, companyName, nip, discountRate, sendSetupLink } = body;
+      if (!clientId) {
+        return NextResponse.json({ error: 'Identyfikator klienta jest wymagany' }, { status: 400 });
       }
 
-      const existing = await db.users.findByEmail(email);
-      if (existing) {
-        return NextResponse.json({ error: 'Klient z tym adresem email już istnieje' }, { status: 400 });
+      // Check uniqueness
+      const existingById = await db.users.findByClientId(clientId);
+      if (existingById) {
+        return NextResponse.json({ error: 'Klient z tym identyfikatorem już istnieje' }, { status: 400 });
       }
 
       const id = `client-${Date.now()}`;
       const sql = getSql();
       const rate = parseFloat(discountRate || '0') || 0;
+      const setupToken = generateToken();
 
       if (sql) {
+        // Try to add new columns if not exist (graceful migration)
+        try {
+          await sql`ALTER TABLE b2b_users ADD COLUMN IF NOT EXISTS client_id TEXT`;
+          await sql`ALTER TABLE b2b_users ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT ''`;
+          await sql`ALTER TABLE b2b_users ADD COLUMN IF NOT EXISTS setup_token TEXT`;
+          await sql`ALTER TABLE b2b_users ADD COLUMN IF NOT EXISTS setup_complete BOOLEAN DEFAULT false`;
+        } catch (_) { /* columns may already exist */ }
+
         await sql`
-          INSERT INTO b2b_users (id, email, password_hash, company_name, nip, discount_rate, role)
-          VALUES (${id}, ${email}, ${password}, ${companyName}, ${nip || ''}, ${rate}, 'client')
+          INSERT INTO b2b_users (id, client_id, email, password_hash, company_name, nip, discount_rate, role, setup_token, setup_complete)
+          VALUES (${id}, ${clientId}, ${email || ''}, '', ${companyName || ''}, ${nip || ''}, ${rate}, 'client', ${setupToken}, false)
         `;
       }
 
       const newClient = {
-        id,
-        email,
-        companyName,
-        nip: nip || '',
-        discountRate: rate,
-        role: 'client' as const
+        id, clientId, email: email || '',
+        companyName: companyName || '',
+        nip: nip || '', discountRate: rate,
+        role: 'client' as const,
+        setupToken,
+        setupComplete: false,
+        passwordHash: ''
       };
-      return NextResponse.json({ success: true, client: newClient });
+
+      return NextResponse.json({ success: true, client: newClient, setupToken });
     }
 
     return NextResponse.json({ error: 'Nieznana akcja' }, { status: 400 });

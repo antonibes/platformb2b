@@ -369,10 +369,7 @@ export async function DELETE(request: NextRequest) {
     const { offerId } = await request.json();
     if (!offerId) return NextResponse.json({ error: 'Brak offerId' }, { status: 400 });
 
-    // Delete all products in offer first
     await db.products.deleteByOfferId(offerId);
-
-    // Then delete offer
     await db.offers.delete(offerId);
     return NextResponse.json({ success: true });
   } catch (error: any) {
@@ -380,3 +377,16 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+// PATCH: set featured offer
+export async function PATCH(request: NextRequest) {
+  try {
+    const { offerId } = await request.json();
+    if (!offerId) return NextResponse.json({ error: 'Brak offerId' }, { status: 400 });
+    await db.offers.setFeatured(offerId);
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
