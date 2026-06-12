@@ -219,7 +219,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the offer
-    const newOffer = await db.offers.create({ title, slug: cleanedSlug, isActive: true });
+    const newOffer = await db.offers.create({ title, slug: cleanedSlug, isActive: true, isFeatured: false });
 
     const parsedProducts: any[] = [];
 

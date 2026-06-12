@@ -92,6 +92,7 @@ const DEFAULT_DB: DatabaseSchema = {
   users: [
     {
       id: 'admin-1',
+      clientId: 'admin@askato.pl',
       email: 'admin@askato.pl',
       passwordHash: 'admin123',
       companyName: 'Askato Sp. z o.o.',
