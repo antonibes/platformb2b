@@ -33,12 +33,21 @@ export async function GET(
     const productsWithPrices = products.map(p => {
       // Normalize SKU — Excel sometimes gives "127972.0" instead of "127972"
       const normalizedSku = String(p.sku).replace(/\.0+$/, '').trim();
-      const computedImageUrl = `/products/product_${normalizedSku}.jpeg`;
+
+      // Priority: use imageUrl stored in DB (may be local path, data: URL, or http URL)
+      // Fall back to constructed local path, then Unsplash placeholder
+      const localPath = `/products/product_${normalizedSku}.jpeg`;
+      const storedUrl = p.imageUrl ? String(p.imageUrl).trim() : '';
+      const resolvedImageUrl = storedUrl || localPath;
+
+      // For onError fallback: if stored URL is http → use it, else Unsplash
+      const fallbackUrl = storedUrl.startsWith('http') ? storedUrl : FALLBACK_IMG;
+
       return {
         ...p,
         sku: normalizedSku,
-        imageUrl: computedImageUrl,
-        _fallbackImage: p.imageUrl && p.imageUrl.startsWith('http') ? p.imageUrl : FALLBACK_IMG,
+        imageUrl: resolvedImageUrl,
+        _fallbackImage: fallbackUrl,
         originalPrice: p.originalPrice || p.price,
         price: p.price,
         discountRate: p.discountRate || 0
