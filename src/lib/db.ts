@@ -427,7 +427,7 @@ export const db = {
     findByOfferId: async (offerId: string): Promise<Product[]> => {
       const sql = getSql();
       if (sql) {
-        const rows = await sql`SELECT * FROM products WHERE offer_id = ${offerId} ORDER BY id ASC`;
+        const rows = await sql`SELECT * FROM products WHERE offer_id = ${offerId} ORDER BY position ASC, id ASC`;
         return rows.map(mapProduct);
       }
       return readDb().products.filter(p => p.offerId === offerId);

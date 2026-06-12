@@ -37,13 +37,10 @@ interface CartItem extends Product {
   quantity: number;
 }
 
-const formatPCB = (pkg: string) => {
-  if (!pkg) return 'PCB 1';
-  const cleaned = pkg.trim();
-  if (cleaned.toLowerCase().startsWith('pcb')) return cleaned;
-  const numMatch = cleaned.match(/\d+/);
-  if (numMatch) return `PCB ${numMatch[0]}`;
-  return `PCB ${cleaned}`;
+const getPCBNum = (pkg: string): string => {
+  if (!pkg) return '1';
+  const numMatch = pkg.match(/\d+/);
+  return numMatch ? numMatch[0] : '1';
 };
 
 
@@ -57,7 +54,6 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
   const [discountRate, setDiscountRate] = useState(0);
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [selectedBrand, setSelectedBrand] = useState('all');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -266,28 +262,16 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
     }
   };
 
-  const getProductBrand = (product: Product): string => {
-    const nameLower = product.name.toLowerCase();
-    if (nameLower.includes('genialny dzieciak')) return 'GENIALNY DZIECIAK';
-    if (nameLower.includes('pomysłowy skrzat') || nameLower.includes('pomyslowy skrzat')) return 'POMYSŁOWY SKRZAT';
-    if (nameLower.includes('klocki małych geniuszy') || nameLower.includes('klocki malych geniuszy')) return 'KLOCKI MAŁYCH GENIUSZY';
-    
-    const cat = (product.category || '').toUpperCase();
-    if (cat.includes('GENIALNY DZIECIAK')) return 'GENIALNY DZIECIAK';
-    if (cat.includes('POMYSŁOWY SKRZAT')) return 'POMYSŁOWY SKRZAT';
-    if (cat.includes('KLOCKI MAŁYCH GENIUSZY')) return 'KLOCKI MAŁYCH GENIUSZY';
-    
-    return 'Pozostałe';
-  };
-
-  const uniqueCategories = useMemo(() => {
-    const cats = new Set<string>();
+const uniqueCategories = useMemo(() => {
+    const seen = new Set<string>();
+    const ordered: string[] = [];
     products.forEach(p => {
       if (p.category) {
-        cats.add(p.category.toUpperCase().trim());
+        const cat = p.category.toUpperCase().trim();
+        if (!seen.has(cat)) { seen.add(cat); ordered.push(cat); }
       }
     });
-    return Array.from(cats).sort((a, b) => a.localeCompare(b, 'pl'));
+    return ordered;
   }, [products]);
 
   const filteredProducts = useMemo(() => {
@@ -295,16 +279,11 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
       const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) ||
                             p.sku.toLowerCase().includes(search.toLowerCase()) ||
                             p.ean.includes(search);
-      
-      const matchesCategory = selectedCategory === 'all' || 
+      const matchesCategory = selectedCategory === 'all' ||
                               (p.category && p.category.toUpperCase().trim() === selectedCategory.toUpperCase().trim());
-      
-      const brand = getProductBrand(p);
-      const matchesBrand = selectedBrand === 'all' || brand === selectedBrand;
-      
-      return matchesSearch && matchesCategory && matchesBrand;
+      return matchesSearch && matchesCategory;
     });
-  }, [products, search, selectedCategory, selectedBrand]);
+  }, [products, search, selectedCategory]);
 
   const groupedProducts = useMemo(() => {
     const groups: { [key: string]: Product[] } = {};
@@ -538,11 +517,7 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
 
       {/* Offer Banner info */}
       <div className="bg-[#1C60B0]/5 border-b border-[#1C60B0]/10">
-        <div className="max-w-[95%] w-full mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-2 text-xs text-[#1C60B0]">
-          <div className="flex items-center space-x-2 font-medium">
-            <Package size={14} className="text-[#1C60B0]" />
-            <span>Pakowanie zbiorcze (PCB). Minimalne zamówienie to 1 PCB.</span>
-          </div>
+        <div className="max-w-[95%] w-full mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-end gap-2 text-xs text-[#1C60B0]">
           <div className="bg-emerald-600 text-white font-extrabold px-3 py-1 rounded-full text-[11px] shadow-sm flex items-center space-x-1">
             <span>🚚</span>
             <span>Darmowa dostawa od 600 zł netto przed rabatem!</span>
@@ -586,34 +561,6 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
           </div>
         </div>
 
-        {/* Brand Filter Row */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
-          <span className="text-xs font-bold text-slate-450 uppercase tracking-wider block">Filtruj według marki:</span>
-          <div className="flex flex-wrap gap-2">
-            {[
-              { id: 'all', label: 'Wszystkie marki' },
-              { id: 'GENIALNY DZIECIAK', label: 'Genialny Dzieciak' },
-              { id: 'POMYSŁOWY SKRZAT', label: 'Pomysłowy Skrzat' },
-              { id: 'KLOCKI MAŁYCH GENIUSZY', label: 'Klocki Małych Geniuszy' },
-              { id: 'Pozostałe', label: 'Pozostałe marki' }
-            ].map(brand => {
-              const isActive = selectedBrand === brand.id;
-              return (
-                <button
-                  key={brand.id}
-                  onClick={() => setSelectedBrand(brand.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
-                    isActive
-                      ? 'bg-[#1C60B0] border-[#1C60B0] text-white shadow-sm shadow-blue-500/20'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:border-slate-300'
-                  }`}
-                >
-                  {brand.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
 
         {/* Category Sections */}
         <div className="mt-8 space-y-12">
@@ -700,8 +647,8 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                               <span className="bg-[#EDF2F9] text-[#4F709C] px-2.5 py-0.5 rounded-lg text-[10px] font-semibold border border-blue-50/50 flex items-center gap-1">
                                 <User size={10} className="inline text-[#4F709C]" /> {product.age || '3+'}
                               </span>
-                              <span className="bg-[#EDF2F9] text-[#4F709C] px-2.5 py-0.5 rounded-lg text-[10px] font-semibold border border-blue-50/50">
-                                {formatPCB(product.packaging)}
+                              <span className="bg-[#EDF2F9] text-[#4F709C] px-2.5 py-0.5 rounded-lg text-[10px] font-semibold border border-blue-50/50 flex items-center gap-1">
+                                <Package size={10} /> {getPCBNum(product.packaging)}
                               </span>
                             </div>
                           </div>
@@ -832,8 +779,8 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                             <span className="bg-[#EDF2F9] text-[#4F709C] px-2 py-0.5 rounded text-[10px] sm:text-[9px] font-semibold font-mono">
                               Kod: {item.sku}
                             </span>
-                            <span className="bg-[#EDF2F9] text-[#4F709C] px-2 py-0.5 rounded text-[10px] sm:text-[9px] font-semibold">
-                              {formatPCB(item.packaging)}
+                            <span className="bg-[#EDF2F9] text-[#4F709C] px-2 py-0.5 rounded text-[10px] sm:text-[9px] font-semibold flex items-center gap-1">
+                              <Package size={9} /> {getPCBNum(item.packaging)}
                             </span>
                           </div>
                         </div>
@@ -890,7 +837,7 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                       <span className="font-semibold text-slate-700">{cart.length}</span>
                     </div>
                     <div className="flex justify-between text-xs text-slate-500">
-                      <span>Opakowań zbiorczych (PCB):</span>
+                      <span>Ilość opakowań:</span>
                       <span className="font-semibold text-slate-700">{cartSummary.totalCount} szt.</span>
                     </div>
                     <div className="flex justify-between items-baseline pt-2.5 border-t border-slate-200">
@@ -1148,8 +1095,8 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                       <span className="text-slate-700 font-bold">{selectedProductDetails.age || '3+'}</span>
                     </div>
                     <div>
-                      <span className="text-slate-400 block uppercase tracking-wider text-[9px] font-bold">Pakowanie zbiorcze (PCB):</span>
-                      <span className="text-slate-700 font-bold">{formatPCB(selectedProductDetails.packaging)}</span>
+                      <span className="text-slate-400 block uppercase tracking-wider text-[9px] font-bold">Opakowanie zbiorcze:</span>
+                      <span className="text-slate-700 font-bold flex items-center gap-1"><Package size={13} /> {getPCBNum(selectedProductDetails.packaging)} szt.</span>
                     </div>
                     <div>
                       <span className="text-slate-400 block uppercase tracking-wider text-[9px] font-bold">Dostępność:</span>
