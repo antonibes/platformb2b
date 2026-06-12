@@ -476,7 +476,7 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
         <div className="max-w-[95%] w-full mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           <div className="flex items-center space-x-5">
             <button
-              onClick={() => router.push(user ? '/client/dashboard' : '/')}
+              onClick={() => router.back()}
               className="text-slate-500 hover:text-slate-800 p-2.5 hover:bg-slate-100 rounded-xl transition border border-slate-200 shadow-sm"
               title="Wróć"
             >

@@ -142,6 +142,10 @@ export default function AdminDashboard() {
   const [selectedOrganizerCategory, setSelectedOrganizerCategory] = useState<string>('');
   const [savingOrganizer, setSavingOrganizer] = useState(false);
 
+  // Custom confirm dialog state (replaces window.confirm which can be blocked)
+  const [confirmDeleteOfferId, setConfirmDeleteOfferId] = useState<string | null>(null);
+  const [confirmDeleteOfferTitle, setConfirmDeleteOfferTitle] = useState('');
+
   // Sync organizer states when offerProducts updates
   useEffect(() => {
     const catsSet = new Set<string>();
@@ -467,7 +471,6 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteOffer = async (offerId: string) => {
-    if (!confirm('Czy na pewno chcesz trwale usunąć tę ofertę wraz ze wszystkimi jej produktami?')) return;
     try {
       const res = await fetch('/api/admin/offers', {
         method: 'DELETE',
@@ -483,7 +486,9 @@ export default function AdminDashboard() {
         setSelectedOfferForEdit(null);
       }
     } catch (err: any) {
-      alert(`Błąd usuwania oferty: ${err.message}`);
+      setUploadError(`Błąd usuwania oferty: ${err.message}`);
+    } finally {
+      setConfirmDeleteOfferId(null);
     }
   };
 
@@ -1369,7 +1374,7 @@ export default function AdminDashboard() {
                       </a>
 
                       <button
-                        onClick={() => handleDeleteOffer(o.id)}
+                        onClick={() => { setConfirmDeleteOfferId(o.id); setConfirmDeleteOfferTitle(o.title); }}
                         className="bg-white border border-slate-200 hover:bg-red-50 text-slate-450 hover:text-[#CD2628] hover:border-red-200 p-2 rounded-lg transition"
                         title="Usuń ofertę"
                       >
@@ -2212,6 +2217,41 @@ export default function AdminDashboard() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Delete Offer Confirm Modal */}
+      {confirmDeleteOfferId && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setConfirmDeleteOfferId(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 border border-slate-200"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center text-[#CD2628] mx-auto mb-5">
+              <X size={28} />
+            </div>
+            <h3 className="text-xl font-black text-slate-900 text-center mb-2">Usunąć ofertę?</h3>
+            <p className="text-sm text-slate-500 text-center mb-1">Zamierzasz trwale usunąć:</p>
+            <p className="text-sm font-bold text-slate-800 text-center mb-3 px-4">&bdquo;{confirmDeleteOfferTitle}&rdquo;</p>
+            <p className="text-xs text-slate-400 text-center mb-8">Ta operacja jest nieodwracalna. Wszystkie produkty w tej ofercie zostaną usunięte.</p>
+            <div className="flex space-x-3">
+              <button
+                onClick={() => setConfirmDeleteOfferId(null)}
+                className="flex-1 py-3 border border-slate-200 text-slate-600 font-bold text-sm rounded-xl hover:bg-slate-50 transition"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={() => handleDeleteOffer(confirmDeleteOfferId)}
+                className="flex-1 py-3 bg-[#CD2628] hover:bg-red-700 text-white font-bold text-sm rounded-xl transition shadow-md"
+              >
+                Tak, usuń ofertę
+              </button>
+            </div>
           </div>
         </div>
       )}
