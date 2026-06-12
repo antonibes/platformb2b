@@ -453,20 +453,14 @@ const uniqueCategories = useMemo(() => {
       {/* Top Navigation */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-md py-4">
         <div className="max-w-[95%] w-full mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-          <div className="flex items-center space-x-5">
-            <button
-              onClick={() => router.back()}
-              className="text-slate-500 hover:text-slate-800 p-2.5 hover:bg-slate-100 rounded-xl transition border border-slate-200 shadow-sm"
-              title="Wróć"
-            >
-              <ArrowLeft size={20} />
-            </button>
-            
+          <div className="flex items-center space-x-4">
             {/* Corporate Logo Display */}
-            <div className="flex items-center space-x-4 border-l border-slate-200 pl-5">
+            <div className="flex items-center space-x-4">
               <img src="/logo.png" alt="Askato Logo" className="h-14 object-contain" />
               <div className="hidden md:block">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block leading-none">Hurtownia Zabawek</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block leading-none">
+                  Oferta z {new Date(offer.createdAt).toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' })}
+                </span>
                 <span className="text-xs font-bold text-slate-755 block mt-1">{offer.title}</span>
               </div>
             </div>
@@ -476,11 +470,12 @@ const uniqueCategories = useMemo(() => {
             {user ? (
               <div className="hidden sm:flex flex-col items-end text-xs">
                 <span className="font-bold text-slate-800">{user.companyName}</span>
-                <span className="text-slate-500 font-medium">Klient B2B (Ceny Netto)</span>
+                <span className="text-[#1C60B0] font-semibold">Ceny netto dla partnerów B2B</span>
               </div>
             ) : (
               <div className="hidden sm:flex flex-col items-end text-xs">
-                <span className="font-semibold text-slate-500">Sesja Gościa (Ceny Netto)</span>
+                <span className="font-semibold text-slate-600">Ceny netto</span>
+                <span className="text-[10px] text-slate-400">Zaloguj się po ceny partnerskie</span>
               </div>
             )}
 
