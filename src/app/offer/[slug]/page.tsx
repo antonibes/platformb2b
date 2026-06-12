@@ -73,6 +73,17 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState<string | null>(null);
   const [selectedProductDetails, setSelectedProductDetails] = useState<Product | null>(null);
+  const [addedNotification, setAddedNotification] = useState<{ name: string; quantity: number } | null>(null);
+
+  // Auto-clear added notification after 3 seconds
+  useEffect(() => {
+    if (addedNotification) {
+      const timer = setTimeout(() => {
+        setAddedNotification(null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [addedNotification]);
 
   // Get user details and device ID
   const [user, setUser] = useState<any>(null);
@@ -189,6 +200,7 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
     }
 
     saveCart(updatedCart);
+    setAddedNotification({ name: product.name, quantity });
 
     // Track addition
     fetch('/api/tracking', {
@@ -626,7 +638,11 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                     return (
                       <div
                         key={product.id}
-                        className="bg-[#F4F7FC] p-3 rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md hover:border-slate-300 transition-all flex flex-col justify-between group"
+                        className={`p-3 rounded-2xl border overflow-hidden shadow-sm transition-all flex flex-col justify-between group ${
+                          inCart 
+                            ? 'bg-emerald-50/15 border-emerald-400 ring-1 ring-emerald-400/20 shadow-emerald-50/50' 
+                            : 'bg-[#F4F7FC] border-slate-200 hover:shadow-md hover:border-slate-300'
+                        }`}
                       >
                         {/* Product Image */}
                         <div 
@@ -691,7 +707,7 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                           </div>
 
                           {/* Pricing and Cart button */}
-                          <div className="pt-2 border-t border-slate-100/50 flex items-center justify-between mt-auto gap-2">
+                          <div className="pt-2 border-t border-slate-100/50 flex flex-col sm:flex-row sm:items-end justify-between mt-auto gap-2">
                             <div className="shrink-0">
                               {product.discountRate > 0 && (
                                 <span className="text-[10px] text-slate-400 line-through block leading-none mb-0.5">
@@ -705,25 +721,33 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                             </div>
 
                             {/* Add quantity controls — stacked on mobile, inline on desktop */}
-                            <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 sm:gap-1 ml-auto">
-                              <input
-                                type="number"
-                                min="1"
-                                max={product.stock}
-                                defaultValue="1"
-                                id={`qty-${product.id}`}
-                                className="w-14 sm:w-10 border border-slate-200 rounded-lg text-center text-xs py-1.5 focus:outline-none focus:ring-1 focus:ring-[#1C60B0] bg-white font-semibold"
-                              />
-                              <button
-                                onClick={() => {
-                                  const input = document.getElementById(`qty-${product.id}`) as HTMLInputElement;
-                                  const qty = parseInt(input?.value || '1', 10);
-                                  handleAddToCart(product, qty);
-                                }}
-                                className="w-full sm:w-auto bg-[#2D6AD5] hover:bg-[#1E56B8] text-white font-bold py-2 sm:py-1.5 px-4 sm:px-3.5 rounded-xl text-xs flex items-center justify-center space-x-1 transition shadow-sm whitespace-nowrap"
-                              >
-                                <span>+ Dodaj</span>
-                              </button>
+                            <div className="flex flex-col gap-1 sm:ml-auto w-full sm:w-auto items-end">
+                              {inCart && (
+                                <div className="text-[10px] text-emerald-600 font-bold flex items-center gap-0.5 mb-0.5">
+                                  <CheckCircle2 size={11} className="text-emerald-500 shrink-0" />
+                                  <span>Dodano ({inCart.quantity} szt.)</span>
+                                </div>
+                              )}
+                              <div className="flex flex-row items-center justify-end gap-1 w-full sm:w-auto">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max={product.stock}
+                                  defaultValue="1"
+                                  id={`qty-${product.id}`}
+                                  className="w-10 border border-slate-200 rounded-lg text-center text-xs py-1.5 focus:outline-none focus:ring-1 focus:ring-[#1C60B0] bg-white font-semibold"
+                                />
+                                <button
+                                  onClick={() => {
+                                    const input = document.getElementById(`qty-${product.id}`) as HTMLInputElement;
+                                    const qty = parseInt(input?.value || '1', 10);
+                                    handleAddToCart(product, qty);
+                                  }}
+                                  className="bg-[#2D6AD5] hover:bg-[#1E56B8] text-white font-bold py-1.5 px-3 rounded-xl text-xs flex items-center justify-center space-x-1 transition shadow-sm whitespace-nowrap"
+                                >
+                                  <span>+ Dodaj</span>
+                                </button>
+                              </div>
                             </div>
                           </div>
 
@@ -765,7 +789,7 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
             onClick={() => setIsCartOpen(false)}
           />
           
-          <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
+          <div className="absolute inset-y-0 right-0 max-w-full flex pl-0 sm:pl-10">
             <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col justify-between animate-slide-in-right">
               
               {/* Drawer Header */}
@@ -776,14 +800,14 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                 </div>
                 <button
                   onClick={() => setIsCartOpen(false)}
-                  className="text-slate-400 hover:text-slate-650 p-1 rounded-lg hover:bg-slate-100 transition"
+                  className="text-slate-400 hover:text-slate-650 p-2 rounded-xl hover:bg-slate-100 transition"
                 >
                   <X size={20} />
                 </button>
               </div>
 
               {/* Drawer Body - Items list */}
-              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+              <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-4">
                 {cart.length === 0 ? (
                   <div className="text-center py-16 text-slate-400">
                     <ShoppingBag size={48} className="mx-auto mb-4 opacity-30" />
@@ -792,23 +816,34 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                   </div>
                 ) : (
                   cart.map((item) => (
-                    <div key={item.id} className="flex space-x-4 p-3 border border-slate-150 rounded-xl bg-slate-50 relative group">
-                      <div className="w-16 h-16 rounded-lg overflow-hidden bg-white border border-slate-200 flex-shrink-0">
-                        <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover"
+                    <div key={item.id} className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4 p-4 border border-slate-150 rounded-2xl bg-slate-50 relative group shadow-sm">
+                      {/* Image Container - Larger & centered */}
+                      <div className="w-full sm:w-20 h-40 sm:h-20 rounded-xl overflow-hidden bg-white border border-slate-200 flex-shrink-0 flex items-center justify-center p-2">
+                        <img src={item.imageUrl} alt={item.name} className="max-w-full max-h-full object-contain"
                           onError={(e) => { if (item._fallbackImage && (e.target as HTMLImageElement).src !== item._fallbackImage) (e.target as HTMLImageElement).src = item._fallbackImage; }}
                         />
                       </div>
                       
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-bold text-slate-800 text-xs truncate pr-6">{item.name}</h4>
-                        <p className="text-[9px] text-slate-450 font-mono mt-0.5">Kod: {item.sku}</p>
+                      {/* Info & Controls */}
+                      <div className="flex-1 flex flex-col justify-between min-w-0">
+                        <div>
+                          <h4 className="font-extrabold text-slate-800 text-sm sm:text-xs leading-snug pr-8 break-words">{item.name}</h4>
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            <span className="bg-[#EDF2F9] text-[#4F709C] px-2 py-0.5 rounded text-[10px] sm:text-[9px] font-semibold font-mono">
+                              Kod: {item.sku}
+                            </span>
+                            <span className="bg-[#EDF2F9] text-[#4F709C] px-2 py-0.5 rounded text-[10px] sm:text-[9px] font-semibold">
+                              {formatPCB(item.packaging)}
+                            </span>
+                          </div>
+                        </div>
                         
-                        <div className="flex items-center justify-between mt-2.5">
-                          {/* Quantity selector inside cart */}
-                          <div className="flex items-center border border-slate-200 rounded-lg bg-white overflow-hidden">
+                        <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-slate-200/50">
+                          {/* Tap-friendly quantity selector */}
+                          <div className="flex items-center border border-slate-250 rounded-xl bg-white overflow-hidden shadow-sm">
                             <button
                               onClick={() => handleUpdateQuantity(item.id, item.quantity - 1)}
-                              className="px-2.5 py-0.5 hover:bg-slate-100 text-xs font-bold text-slate-500 transition"
+                              className="w-10 h-10 hover:bg-slate-50 active:bg-slate-100 text-base font-bold text-slate-500 transition flex items-center justify-center"
                             >
                               -
                             </button>
@@ -816,30 +851,30 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                               type="number"
                               value={item.quantity}
                               onChange={(e) => handleUpdateQuantity(item.id, parseInt(e.target.value, 10) || 0)}
-                              className="w-10 text-center text-xs focus:outline-none font-semibold text-slate-700"
+                              className="w-12 h-10 text-center text-xs focus:outline-none font-extrabold text-slate-800"
                             />
                             <button
                               onClick={() => handleUpdateQuantity(item.id, item.quantity + 1)}
-                              className="px-2.5 py-0.5 hover:bg-slate-100 text-xs font-bold text-slate-500 transition"
+                              className="w-10 h-10 hover:bg-slate-50 active:bg-slate-100 text-base font-bold text-slate-500 transition flex items-center justify-center"
                             >
                               +
                             </button>
                           </div>
 
                           <div className="text-right">
-                            <span className="text-xs text-slate-400 block font-light">{(item.price * item.quantity).toFixed(2)} PLN</span>
-                            <span className="text-xs font-extrabold text-[#1C60B0]">netto</span>
+                            <span className="text-base font-black text-[#1C60B0] block">{(item.price * item.quantity).toFixed(2)} PLN</span>
+                            <span className="text-[10px] text-slate-400 font-semibold block leading-none mt-0.5">netto ({item.price.toFixed(2)} / szt.)</span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Delete button */}
+                      {/* Delete button - always visible on mobile, hover-only on desktop */}
                       <button
                         onClick={() => handleRemoveFromCart(item.id)}
-                        className="absolute top-2 right-2 text-slate-400 hover:text-[#CD2628] p-1 rounded transition opacity-0 group-hover:opacity-100 focus:opacity-100"
+                        className="absolute top-2 right-2 text-slate-450 hover:text-[#CD2628] hover:bg-red-50 p-2 rounded-xl transition md:opacity-0 md:group-hover:opacity-100 focus:opacity-100"
                         title="Usuń"
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   ))
@@ -1156,35 +1191,56 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
                 </div>
 
                 {/* Add to Cart Actions */}
-                <div className="pt-4 border-t border-slate-150 flex items-center justify-between gap-4">
-                  <div className="flex items-center space-x-2.5">
-                    <span className="text-xs text-slate-500 font-bold">Ilość:</span>
-                    <input
-                      type="number"
-                      min="1"
-                      max={selectedProductDetails.stock}
-                      defaultValue="1"
-                      id={`modal-qty-${selectedProductDetails.id}`}
-                      className="w-14 border border-slate-200 rounded-xl text-center text-sm py-1.5 font-bold focus:outline-none focus:ring-1 focus:ring-[#1C60B0]"
-                    />
-                  </div>
+                <div className="pt-4 border-t border-slate-150 flex flex-col space-y-3">
+                  {(() => {
+                    const modalInCart = cart.find(item => item.id === selectedProductDetails.id);
+                    if (!modalInCart) return null;
+                    return (
+                      <div className="text-xs text-emerald-600 font-bold flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl w-fit self-end">
+                        <CheckCircle2 size={14} className="text-emerald-650" />
+                        <span>Masz już {modalInCart.quantity} szt. w koszyku</span>
+                      </div>
+                    );
+                  })()}
 
-                  <button
-                    onClick={() => {
-                      const input = document.getElementById(`modal-qty-${selectedProductDetails.id}`) as HTMLInputElement;
-                      const qty = parseInt(input?.value || '1', 10);
-                      handleAddToCart(selectedProductDetails, qty);
-                      setSelectedProductDetails(null); // Close modal after adding
-                    }}
-                    className="flex-grow bg-[#1C60B0] hover:bg-[#1A54A5] text-white font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center space-x-1.5 transition shadow-sm"
-                  >
-                    <ShoppingBag size={14} />
-                    <span>Dodaj do koszyka</span>
-                  </button>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center space-x-2.5">
+                      <span className="text-xs text-slate-500 font-bold">Ilość:</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max={selectedProductDetails.stock}
+                        defaultValue="1"
+                        id={`modal-qty-${selectedProductDetails.id}`}
+                        className="w-14 border border-slate-200 rounded-xl text-center text-sm py-1.5 font-bold focus:outline-none focus:ring-1 focus:ring-[#1C60B0]"
+                      />
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        const input = document.getElementById(`modal-qty-${selectedProductDetails.id}`) as HTMLInputElement;
+                        const qty = parseInt(input?.value || '1', 10);
+                        handleAddToCart(selectedProductDetails, qty);
+                        setSelectedProductDetails(null); // Close modal after adding
+                      }}
+                      className="flex-grow bg-[#1C60B0] hover:bg-[#1A54A5] text-white font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center space-x-1.5 transition shadow-sm"
+                    >
+                      <ShoppingBag size={14} />
+                      <span>Dodaj do koszyka</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Subtle added to cart notification toast */}
+      {addedNotification && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 md:left-6 md:translate-x-0 z-50 bg-[#1C60B0] text-white px-4 py-3 rounded-2xl shadow-xl flex items-center space-x-2.5 text-xs font-bold animate-fade-in border border-blue-400/20 max-w-[90vw] md:max-w-md">
+          <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+          <span className="truncate">Dodano: <strong className="font-extrabold">{addedNotification.name}</strong> ({addedNotification.quantity} szt.)</span>
         </div>
       )}
 

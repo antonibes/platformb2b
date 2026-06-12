@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import * as XLSX from 'xlsx';
 import * as fs from 'fs';
 import * as path from 'path';
+import JSZip from 'jszip';
 
 export const dynamic = 'force-dynamic';
 
@@ -144,6 +145,79 @@ export async function POST(request: NextRequest) {
       return undefined;
     };
 
+    // Try to extract embedded images from the XLSX ZIP package
+    const skuToImageBuffer: { [sku: string]: Buffer } = {};
+    try {
+      const zip = await JSZip.loadAsync(buffer);
+      const drawingFile = zip.file('xl/drawings/drawing1.xml');
+      const drawingRelsFile = zip.file('xl/drawings/_rels/drawing1.xml.rels');
+
+      if (drawingFile && drawingRelsFile && skuIdx !== undefined) {
+        const drawingXml = await drawingFile.async('string');
+        const drawingRelsXml = await drawingRelsFile.async('string');
+
+        // Parse drawing relationship IDs to target files
+        const rels: { [rId: string]: string } = {};
+        const relRegex = /<Relationship[^>]*Id="(rId\d+)"[^>]*Target="([^"]+)"/g;
+        let relMatch;
+        while ((relMatch = relRegex.exec(drawingRelsXml)) !== null) {
+          rels[relMatch[1]] = relMatch[2];
+        }
+
+        // Parse twoCellAnchor/oneCellAnchor tags to match drawing row to relationship ID
+        const anchors: { row: number; rId: string }[] = [];
+        const anchorRegex = /<xdr:(?:twoCellAnchor|oneCellAnchor)[^>]*>([\s\S]*?)<\/xdr:(?:twoCellAnchor|oneCellAnchor)>/g;
+        let anchorMatch;
+        while ((anchorMatch = anchorRegex.exec(drawingXml)) !== null) {
+          const block = anchorMatch[1];
+          const rowMatch = block.match(/<xdr:from>[\s\S]*?<xdr:row>(\d+)<\/xdr:row>/);
+          const row = rowMatch ? parseInt(rowMatch[1], 10) : null;
+          const rIdMatch = block.match(/(?:r:embed|r:id)="(rId\d+)"/);
+          const rId = rIdMatch ? rIdMatch[1] : null;
+          if (row !== null && rId) {
+            anchors.push({ row, rId });
+          }
+        }
+
+        // Retrieve binary image file and map it to the SKU found on or near that row
+        for (const anchor of anchors) {
+          const mediaTarget = rels[anchor.rId];
+          if (!mediaTarget) continue;
+
+          const filename = mediaTarget.split('/').pop() || '';
+          if (!filename) continue;
+
+          const mediaPath = `xl/drawings/${mediaTarget}`.replace(/\/\.\.\//g, '/').replace('xl/drawings/../', 'xl/');
+          let mediaFile = zip.file(mediaPath);
+          if (!mediaFile) {
+            mediaFile = zip.file(`xl/media/${filename}`);
+          }
+
+          if (mediaFile) {
+            const imgBuffer = await mediaFile.async('nodebuffer');
+            let sku: string | null = null;
+            // Check adjacent rows to handle slight alignment variations (e.g. headers, merged cells)
+            for (const offset of [0, 1, -1, 2, -2]) {
+              const tryRow = rawRows[anchor.row + offset];
+              if (tryRow && tryRow[skuIdx]) {
+                const s = String(tryRow[skuIdx]).replace(/\.0+$/, '').trim();
+                if (s) {
+                  sku = s;
+                  break;
+                }
+              }
+            }
+
+            if (sku) {
+              skuToImageBuffer[sku] = imgBuffer;
+            }
+          }
+        }
+      }
+    } catch (zipErr) {
+      console.warn('[ZIP Images] Could not extract embedded images from XLSX ZIP structure:', zipErr);
+    }
+
     // Create the offer
     const newOffer = await db.offers.create({ title, slug: cleanedSlug, isActive: true });
 
@@ -221,15 +295,25 @@ export async function POST(request: NextRequest) {
       }
 
       // --- Image URL resolution (priority order) ---
-      // 1. Local file already exists → use it directly
-      // 2. Excel has a URL → download & save locally → use local path
-      // 3. No URL in Excel → use Unsplash placeholder
+      // 1. Embedded image extracted from ZIP -> save it and use it
+      // 2. Local file already exists → use it directly
+      // 3. Excel has a URL → download & save locally → use local path
+      // 4. No URL in Excel → use Unsplash placeholder
       const skuStr = String(sku).trim();
       const localImagePath = path.join(process.cwd(), 'public', 'products', `product_${skuStr}.jpeg`);
       const localImageUrl = `/products/product_${skuStr}.jpeg`;
       let imageUrl: string;
 
-      if (fs.existsSync(localImagePath)) {
+      if (skuToImageBuffer[skuStr]) {
+        try {
+          fs.mkdirSync(path.dirname(localImagePath), { recursive: true });
+          fs.writeFileSync(localImagePath, skuToImageBuffer[skuStr]);
+          imageUrl = localImageUrl;
+        } catch (imgWriteErr) {
+          console.error(`Failed to write ZIP image for SKU ${skuStr}:`, imgWriteErr);
+          imageUrl = localImageUrl;
+        }
+      } else if (fs.existsSync(localImagePath)) {
         // Already have it locally
         imageUrl = localImageUrl;
       } else if (rawImage && String(rawImage).trim().startsWith('http')) {

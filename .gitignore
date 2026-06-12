@@ -38,3 +38,6 @@ next-env.d.ts
 # temp/data files
 temp_extracted/
 *.xlsx
+
+# product images
+/public/products/product_*
