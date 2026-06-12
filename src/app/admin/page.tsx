@@ -242,6 +242,7 @@ interface Offer {
   title: string;
   slug: string;
   isActive: boolean;
+  isFeatured?: boolean;
   productCount: number;
   createdAt: string;
 }
@@ -685,6 +686,23 @@ export default function AdminDashboard() {
       setNewClient({ email: '', password: '', companyName: '', nip: '', discountRate: '0' });
       setShowAddClient(false);
     } catch (err: any) { alert(`Błąd: ${err.message}`); }
+  };
+
+  const handleSetFeatured = async (offerId: string) => {
+    try {
+      const res = await fetch('/api/admin/offers', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ offerId }),
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Błąd serwera');
+      }
+      setOffers(prev => prev.map(o => ({ ...o, isFeatured: o.id === offerId })));
+    } catch (err: any) {
+      alert(`Błąd: ${err.message}`);
+    }
   };
 
   const handleDeleteOffer = async (offerId: string) => {
@@ -1563,9 +1581,16 @@ export default function AdminDashboard() {
               
               <div className="space-y-3">
                 {offers.map((o) => (
-                  <div key={o.id} className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs">
+                  <div key={o.id} className={`p-4 border rounded-xl flex items-center justify-between text-xs ${o.isFeatured ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'}`}>
                     <div>
-                      <h4 className="font-bold text-sm text-slate-800">{o.title}</h4>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold text-sm text-slate-800">{o.title}</h4>
+                        {o.isFeatured && (
+                          <span className="inline-flex items-center gap-1 bg-amber-400 text-white text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-wide">
+                            ★ Główna
+                          </span>
+                        )}
+                      </div>
                       <code className="text-[10px] text-slate-500 block mt-0.5">Link: /offer/{o.slug}</code>
                       <div className="flex space-x-4 text-[10px] text-slate-400 mt-2">
                         <span>Liczba towarów: <strong className="text-slate-600">{o.productCount}</strong></span>
@@ -1574,6 +1599,17 @@ export default function AdminDashboard() {
                     </div>
 
                     <div className="flex space-x-2">
+                      {!o.isFeatured && (
+                        <button
+                          onClick={() => handleSetFeatured(o.id)}
+                          className="bg-amber-400 hover:bg-amber-500 text-white font-bold px-3 py-1.5 rounded-lg transition flex items-center space-x-1 text-[11px]"
+                          title="Ustaw jako główna oferta (dostępna pod /)"
+                        >
+                          <span>★</span>
+                          <span>Ustaw jako główną</span>
+                        </button>
+                      )}
+
                       <button
                         onClick={() => handleSelectOfferForEdit(o)}
                         className="bg-[#1C60B0] hover:bg-[#1A54A5] text-white font-bold px-3 py-1.5 rounded-lg transition flex items-center space-x-1"
@@ -1582,7 +1618,7 @@ export default function AdminDashboard() {
                         <Settings size={12} />
                         <span>Edytuj towary</span>
                       </button>
-                      
+
                       <a
                         href={`/offer/${o.slug}?preview=true`}
                         target="_blank"
