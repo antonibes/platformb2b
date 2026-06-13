@@ -1387,7 +1387,7 @@ export default function AdminDashboard() {
                       />
                       <div>
                         <span className="font-bold text-sm text-slate-800 block">Wyślij do panelu (domyślnie)</span>
-                        <span className="text-xs text-slate-500">Zamówienie zapisuje się w zakładce "Zamówienia" w panelu admina. Nie wymaga konfiguracji.</span>
+                        <span className="text-xs text-slate-500">Zamówienie zapisuje się w zakładce &quot;Zamówienia&quot; w panelu admina. Nie wymaga konfiguracji.</span>
                       </div>
                     </label>
 
@@ -1402,7 +1402,7 @@ export default function AdminDashboard() {
                       />
                       <div>
                         <span className="font-bold text-sm text-slate-800 block">Przez e-mail klienta</span>
-                        <span className="text-xs text-slate-500">Klient klika "Wyślij" → automatycznie pobiera plik CSV z kodami i ilościami → otwiera mu się skrzynka pocztowa z gotową wiadomością do Ciebie.</span>
+                        <span className="text-xs text-slate-500">Klient klika &quot;Wyślij&quot; → automatycznie pobiera plik CSV z kodami i ilościami → otwiera mu się skrzynka pocztowa z gotową wiadomością do Ciebie.</span>
                       </div>
                     </label>
                   </div>
