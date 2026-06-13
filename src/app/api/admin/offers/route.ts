@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
       }
 
       const PLACEHOLDER = 'https://images.unsplash.com/photo-1596464716127-f2a82984de30?w=500&auto=format&fit=crop&q=60';
-      const newOffer = await db.offers.create({ title, slug: cleanedSlug, isActive: true, isFeatured: false });
+      const newOffer = await db.offers.create({ title, slug: cleanedSlug, isActive: true, isFeatured: false, orderMode: 'panel', orderEmail: '' });
 
       const parsedProducts = rawProducts.map((p: any) => ({
         offerId: newOffer.id,
@@ -268,7 +268,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the offer
-    const newOffer = await db.offers.create({ title, slug: cleanedSlug, isActive: true, isFeatured: false });
+    const newOffer = await db.offers.create({ title, slug: cleanedSlug, isActive: true, isFeatured: false, orderMode: 'panel', orderEmail: '' });
 
     const parsedProducts: any[] = [];
 
@@ -427,12 +427,22 @@ export async function DELETE(request: NextRequest) {
   }
 }
 
-// PATCH: set featured offer
+// PATCH: set featured offer OR update order settings
 export async function PATCH(request: NextRequest) {
   try {
-    const { offerId } = await request.json();
+    const body = await request.json();
+    const { offerId, action, orderMode, orderEmail } = body;
     if (!offerId) return NextResponse.json({ error: 'Brak offerId' }, { status: 400 });
-    await db.offers.setFeatured(offerId);
+
+    if (action === 'orderSettings') {
+      if (!orderMode || !['panel', 'email'].includes(orderMode)) {
+        return NextResponse.json({ error: 'Nieprawidłowy orderMode' }, { status: 400 });
+      }
+      await db.offers.updateOrderSettings(offerId, orderMode, orderEmail || '');
+    } else {
+      await db.offers.setFeatured(offerId);
+    }
+
     return NextResponse.json({ success: true });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

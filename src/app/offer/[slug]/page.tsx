@@ -31,6 +31,8 @@ interface Offer {
   slug: string;
   isActive: boolean;
   createdAt: string;
+  orderMode?: 'panel' | 'email';
+  orderEmail?: string;
 }
 
 interface CartItem extends Product {
@@ -356,53 +358,81 @@ const uniqueCategories = useMemo(() => {
     setIsSubmitting(true);
 
     try {
-      const res = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user?.id || null,
-          guestDeviceId: user ? null : deviceId,
-          clientName: companyName,
-          clientNip: nip,
-          clientEmail: email,
-          clientPhone: phone,
-          comments,
-          items: cart
-        })
-      });
+      if (offer?.orderMode === 'email' && offer?.orderEmail) {
+        // ── Email mode: download CSV + open mailto ──────────────────────────
+        const csvRows = ['Kod SKU,Nazwa,Ilość'];
+        cart.forEach(item => {
+          csvRows.push(`${item.sku},"${item.name.replace(/"/g, '""')}",${item.quantity}`);
+        });
+        const csvContent = csvRows.join('\n');
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Błąd wysyłania zamówienia');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `zamowienie_${slug}_${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        const bodyLines = [
+          `Zamówienie z oferty: ${offer.title}`,
+          ``,
+          `Firma: ${companyName}`,
+          nip ? `NIP: ${nip}` : '',
+          email ? `E-mail: ${email}` : '',
+          phone ? `Telefon: ${phone}` : '',
+          ``,
+          `Pozycje zamówienia:`,
+          ...cart.map(item => `- ${item.sku} | ${item.name} | szt: ${item.quantity}`),
+          ``,
+          comments ? `Uwagi: ${comments}` : '',
+        ].filter(l => l !== undefined).join('\n');
+
+        const mailtoHref = `mailto:${offer.orderEmail}?subject=${encodeURIComponent(`Zamówienie – ${offer.title}`)}&body=${encodeURIComponent(bodyLines)}`;
+        window.location.href = mailtoHref;
+
+        setOrderSuccess('email');
+        canvasConfetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
+        saveCart([]);
+      } else {
+        // ── Panel mode: send to server ──────────────────────────────────────
+        const res = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: user?.id || null,
+            guestDeviceId: user ? null : deviceId,
+            clientName: companyName,
+            clientNip: nip,
+            clientEmail: email,
+            clientPhone: phone,
+            comments,
+            items: cart
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Błąd wysyłania zamówienia');
+
+        setOrderSuccess(data.orderId);
+
+        fetch('/api/tracking', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            deviceId,
+            userId: user?.id || null,
+            eventType: 'email_order',
+            offerSlug: slug,
+            payload: { orderId: data.orderId, itemsCount: cart.length, totalValue: cartSummary.totalNet, emailSent: data.emailSent }
+          })
+        }).catch(err => console.error('Tracking failed', err));
+
+        canvasConfetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
+        saveCart([]);
       }
-
-      setOrderSuccess(data.orderId);
-
-      // Track email order
-      fetch('/api/tracking', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          deviceId,
-          userId: user?.id || null,
-          eventType: 'email_order',
-          offerSlug: slug,
-          payload: {
-            orderId: data.orderId,
-            itemsCount: cart.length,
-            totalValue: cartSummary.totalNet,
-            emailSent: data.emailSent
-          }
-        })
-      }).catch(err => console.error('Tracking failed', err));
-
-      canvasConfetti({
-        particleCount: 150,
-        spread: 80,
-        origin: { y: 0.6 }
-      });
-
-      saveCart([]);
     } catch (err: any) {
       alert(err.message || 'Nie udało się wysłać zamówienia. Spróbuj pobrać plik CSV.');
     } finally {
@@ -475,7 +505,6 @@ const uniqueCategories = useMemo(() => {
             ) : (
               <div className="hidden sm:flex flex-col items-end text-xs">
                 <span className="font-semibold text-slate-600">Ceny netto</span>
-                <span className="text-[10px] text-slate-400">Zaloguj się po ceny partnerskie</span>
               </div>
             )}
 
@@ -996,16 +1025,24 @@ const uniqueCategories = useMemo(() => {
                   <Check size={32} />
                 </div>
                 <h3 className="text-2xl font-black text-slate-800 mb-2">Zamówienie Zostało Złożone!</h3>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto mb-6">
-                  Dziękujemy. Zlecenie hurtowe zostało poprawnie przekazane. Trwa generowanie faktury proforma.
-                </p>
+                {orderSuccess === 'email' ? (
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto mb-6">
+                    Plik CSV z zamówieniem został pobrany. Otwiera się Twój klient pocztowy — wyślij e-mail z załączonym plikiem.
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto mb-6">
+                    Dziękujemy. Zlecenie hurtowe zostało poprawnie przekazane. Trwa generowanie faktury proforma.
+                  </p>
+                )}
 
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-8">
-                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Numer Referencyjny</span>
-                  <span className="text-sm font-mono font-bold text-slate-700 bg-white border border-slate-200 px-3 py-1 rounded-md block mt-1.5 w-fit mx-auto">
-                    {orderSuccess}
-                  </span>
-                </div>
+                {orderSuccess !== 'email' && (
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-8">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Numer Referencyjny</span>
+                    <span className="text-sm font-mono font-bold text-slate-700 bg-white border border-slate-200 px-3 py-1 rounded-md block mt-1.5 w-fit mx-auto">
+                      {orderSuccess}
+                    </span>
+                  </div>
+                )}
 
                 <div className="flex space-x-3 max-w-xs mx-auto">
                   <button

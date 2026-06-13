@@ -243,6 +243,8 @@ interface Offer {
   slug: string;
   isActive: boolean;
   isFeatured?: boolean;
+  orderMode?: 'panel' | 'email';
+  orderEmail?: string;
   productCount: number;
   createdAt: string;
 }
@@ -326,8 +328,13 @@ export default function AdminDashboard() {
   const [newClient, setNewClient] = useState({ email: '', password: '', companyName: '', nip: '', discountRate: '0' });
   const [newProduct, setNewProduct] = useState({ name: '', sku: '', ean: '', category: '', price: '', stock: '100', packaging: 'PCB 1', imageUrl: '', age: '3+', description: '', discountRate: '0', originalPrice: '' });
 
+  // Order settings per offer
+  const [offerOrderMode, setOfferOrderMode] = useState<'panel' | 'email'>('panel');
+  const [offerOrderEmail, setOfferOrderEmail] = useState('');
+  const [savingOrderSettings, setSavingOrderSettings] = useState(false);
+
   // Organizer and Order status states
-  const [editorMode, setEditorMode] = useState<'table' | 'organizer'>('table');
+  const [editorMode, setEditorMode] = useState<'table' | 'organizer' | 'settings'>('table');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('all');
   const [localOrganizerProducts, setLocalOrganizerProducts] = useState<Product[]>([]);
   const [uniqueCategoriesList, setUniqueCategoriesList] = useState<string[]>([]);
@@ -438,6 +445,8 @@ export default function AdminDashboard() {
     setSelectedOfferForEdit(offer);
     setProductsLoading(true);
     setProductSearch('');
+    setOfferOrderMode(offer.orderMode || 'panel');
+    setOfferOrderEmail(offer.orderEmail || '');
     try {
       const res = await fetch(`/api/admin/products?offerId=${offer.id}`);
       const data = await res.json();
@@ -686,6 +695,29 @@ export default function AdminDashboard() {
       setNewClient({ email: '', password: '', companyName: '', nip: '', discountRate: '0' });
       setShowAddClient(false);
     } catch (err: any) { alert(`Błąd: ${err.message}`); }
+  };
+
+  const handleSaveOrderSettings = async () => {
+    if (!selectedOfferForEdit) return;
+    if (offerOrderMode === 'email' && !offerOrderEmail.trim()) {
+      alert('Podaj adres e-mail odbiorcy zamówień.');
+      return;
+    }
+    setSavingOrderSettings(true);
+    try {
+      const res = await fetch('/api/admin/offers', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ offerId: selectedOfferForEdit.id, action: 'orderSettings', orderMode: offerOrderMode, orderEmail: offerOrderEmail }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || 'Błąd serwera');
+      setSelectedOfferForEdit(prev => prev ? { ...prev, orderMode: offerOrderMode, orderEmail: offerOrderEmail } : prev);
+      setOffers(prev => prev.map(o => o.id === selectedOfferForEdit.id ? { ...o, orderMode: offerOrderMode, orderEmail: offerOrderEmail } : o));
+    } catch (err: any) {
+      alert(`Błąd: ${err.message}`);
+    } finally {
+      setSavingOrderSettings(false);
+    }
   };
 
   const handleSetFeatured = async (offerId: string) => {
@@ -981,6 +1013,16 @@ export default function AdminDashboard() {
               >
                 <span>Układ kategorii i kolejność produktów</span>
                 <span className="bg-indigo-50 text-[#1C60B0] text-[9px] px-1.5 py-0.5 rounded font-extrabold border border-indigo-100">Nowość</span>
+              </button>
+              <button
+                onClick={() => setEditorMode('settings')}
+                className={`py-2 px-4 font-bold text-xs border-b-2 transition-all ${
+                  editorMode === 'settings'
+                    ? 'border-amber-500 text-amber-600'
+                    : 'border-transparent text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                Ustawienia zamówień
               </button>
             </div>
 
@@ -1324,6 +1366,71 @@ export default function AdminDashboard() {
                     )}
                   </div>
                 </div>
+              </div>
+            )}
+
+            {editorMode === 'settings' && (
+              <div className="space-y-6 max-w-lg animate-fade-in">
+                <div>
+                  <h4 className="font-bold text-sm text-slate-800 mb-1">Jak klient wysyła zamówienie?</h4>
+                  <p className="text-xs text-slate-500 mb-4">Wybierz czy zamówienia trafiają do panelu administracyjnego (domyślnie), czy klient pobiera CSV i otwiera swojego maila.</p>
+
+                  <div className="space-y-3">
+                    <label className={`flex items-start gap-3 p-4 border rounded-xl cursor-pointer transition ${offerOrderMode === 'panel' ? 'border-[#1C60B0] bg-blue-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
+                      <input
+                        type="radio"
+                        name="orderMode"
+                        value="panel"
+                        checked={offerOrderMode === 'panel'}
+                        onChange={() => setOfferOrderMode('panel')}
+                        className="mt-0.5"
+                      />
+                      <div>
+                        <span className="font-bold text-sm text-slate-800 block">Wyślij do panelu (domyślnie)</span>
+                        <span className="text-xs text-slate-500">Zamówienie zapisuje się w zakładce "Zamówienia" w panelu admina. Nie wymaga konfiguracji.</span>
+                      </div>
+                    </label>
+
+                    <label className={`flex items-start gap-3 p-4 border rounded-xl cursor-pointer transition ${offerOrderMode === 'email' ? 'border-amber-400 bg-amber-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
+                      <input
+                        type="radio"
+                        name="orderMode"
+                        value="email"
+                        checked={offerOrderMode === 'email'}
+                        onChange={() => setOfferOrderMode('email')}
+                        className="mt-0.5"
+                      />
+                      <div>
+                        <span className="font-bold text-sm text-slate-800 block">Przez e-mail klienta</span>
+                        <span className="text-xs text-slate-500">Klient klika "Wyślij" → automatycznie pobiera plik CSV z kodami i ilościami → otwiera mu się skrzynka pocztowa z gotową wiadomością do Ciebie.</span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                {offerOrderMode === 'email' && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5">
+                      Adres e-mail odbiorcy zamówień
+                    </label>
+                    <input
+                      type="email"
+                      value={offerOrderEmail}
+                      onChange={(e) => setOfferOrderEmail(e.target.value)}
+                      placeholder="np. biuro@askato.pl"
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/50 bg-slate-50"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1.5">Na ten adres trafi wiadomość od klienta z zamówieniem (plik CSV w treści).</p>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleSaveOrderSettings}
+                  disabled={savingOrderSettings}
+                  className="bg-[#1C60B0] hover:bg-[#1A54A5] disabled:opacity-50 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition flex items-center gap-2"
+                >
+                  {savingOrderSettings ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /><span>Zapisywanie...</span></> : 'Zapisz ustawienia'}
+                </button>
               </div>
             )}
           </div>
@@ -2367,16 +2474,35 @@ export default function AdminDashboard() {
               </div>
 
               <div className="md:col-span-2">
-                <label className="block text-slate-500 font-semibold mb-1">URL Zdjęcia produktu (lokalne lub zdalne)</label>
-                <div className="flex space-x-2">
-                  <input
-                    type="text"
-                    value={editingProduct.imageUrl}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, imageUrl: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]"
-                  />
-                  <div className="w-10 h-10 bg-slate-100 border border-slate-200 rounded p-1 flex items-center justify-center overflow-hidden flex-shrink-0">
+                <label className="block text-slate-500 font-semibold mb-2">Zdjęcie produktu</label>
+                <div className="flex items-center gap-4">
+                  <div className="w-24 h-24 bg-slate-100 border border-slate-200 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center">
                     <img src={editingProduct.imageUrl} alt="preview" className="max-h-full max-w-full object-contain" />
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <label className="block w-full cursor-pointer bg-slate-50 hover:bg-slate-100 border border-dashed border-slate-300 rounded-xl px-4 py-3 text-center transition">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const buf = await file.arrayBuffer();
+                          const b64 = await compressImageToBase64(buf, 600, 0.75);
+                          if (b64) setEditingProduct({ ...editingProduct, imageUrl: b64 });
+                        }}
+                      />
+                      <span className="text-xs font-semibold text-[#1C60B0]">Kliknij aby wybrać nowe zdjęcie</span>
+                      <span className="block text-[10px] text-slate-400 mt-0.5">JPG, PNG, WEBP — automatycznie skompresowane</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={editingProduct.imageUrl.startsWith('data:') ? '' : editingProduct.imageUrl}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, imageUrl: e.target.value })}
+                      placeholder="…lub wklej link do zdjęcia (https://...)"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-[#1C60B0]"
+                    />
                   </div>
                 </div>
               </div>

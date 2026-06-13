@@ -26,6 +26,8 @@ export interface Offer {
   isActive: boolean;
   isFeatured: boolean;
   createdAt: string;
+  orderMode: 'panel' | 'email';
+  orderEmail: string;
 }
 
 export interface Product {
@@ -178,7 +180,9 @@ function mapOffer(row: any): Offer {
     slug: row.slug,
     isActive: !!row.is_active,
     isFeatured: !!row.is_featured,
-    createdAt: toUtcIsoString(row.created_at)
+    createdAt: toUtcIsoString(row.created_at),
+    orderMode: (row.order_mode === 'email' ? 'email' : 'panel') as 'panel' | 'email',
+    orderEmail: row.order_email || '',
   };
 }
 
@@ -414,7 +418,6 @@ export const db = {
           await sql`UPDATE offers SET is_featured = false`;
           await sql`UPDATE offers SET is_featured = true WHERE id = ${id}`;
         } catch {
-          // is_featured column missing — try to add it first, then retry
           await sql`ALTER TABLE offers ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT false`;
           await sql`UPDATE offers SET is_featured = false`;
           await sql`UPDATE offers SET is_featured = true WHERE id = ${id}`;
@@ -423,6 +426,22 @@ export const db = {
       }
       const current = readDb();
       current.offers = current.offers.map(o => ({ ...o, isFeatured: o.id === id }));
+      writeDb(current);
+    },
+    updateOrderSettings: async (id: string, orderMode: 'panel' | 'email', orderEmail: string): Promise<void> => {
+      const sql = getSql();
+      if (sql) {
+        try {
+          await sql`UPDATE offers SET order_mode = ${orderMode}, order_email = ${orderEmail} WHERE id = ${id}`;
+        } catch {
+          await sql`ALTER TABLE offers ADD COLUMN IF NOT EXISTS order_mode VARCHAR(10) DEFAULT 'panel'`;
+          await sql`ALTER TABLE offers ADD COLUMN IF NOT EXISTS order_email TEXT DEFAULT ''`;
+          await sql`UPDATE offers SET order_mode = ${orderMode}, order_email = ${orderEmail} WHERE id = ${id}`;
+        }
+        return;
+      }
+      const current = readDb();
+      current.offers = current.offers.map(o => o.id === id ? { ...o, orderMode, orderEmail } : o);
       writeDb(current);
     }
   },
