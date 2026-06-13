@@ -390,8 +390,14 @@ const uniqueCategories = useMemo(() => {
           comments ? `Uwagi: ${comments}` : '',
         ].filter(l => l !== undefined).join('\n');
 
-        const mailtoHref = `mailto:${offer.orderEmail}?subject=${encodeURIComponent(`Zamówienie – ${offer.title}`)}&body=${encodeURIComponent(bodyLines)}`;
-        window.location.href = mailtoHref;
+        const mailtoHref = `mailto:${offer.orderEmail}?subject=${encodeURIComponent(`Zamówienie - ${offer.title}`)}&body=${encodeURIComponent(bodyLines)}`;
+        setTimeout(() => {
+          const mailLink = document.createElement('a');
+          mailLink.href = mailtoHref;
+          document.body.appendChild(mailLink);
+          mailLink.click();
+          document.body.removeChild(mailLink);
+        }, 400);
 
         setOrderSuccess('email');
         canvasConfetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
@@ -1024,14 +1030,14 @@ const uniqueCategories = useMemo(() => {
                 <div className="w-16 h-16 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-full flex items-center justify-center mx-auto mb-4 animate-scale-in">
                   <Check size={32} />
                 </div>
-                <h3 className="text-2xl font-black text-slate-800 mb-2">Zamówienie Zostało Złożone!</h3>
+                <h3 className="text-2xl font-black text-slate-800 mb-2">Zamówienie zostało złożone!</h3>
                 {orderSuccess === 'email' ? (
                   <p className="text-xs text-slate-500 max-w-sm mx-auto mb-6">
-                    Plik CSV z zamówieniem został pobrany. Otwiera się Twój klient pocztowy — wyślij e-mail z załączonym plikiem.
+                    Dziękujemy! Plik CSV z zamówieniem został pobrany, a Twój klient pocztowy zaraz się otworzy. Wyślij wiadomość z pliku, który pobrałeś.
                   </p>
                 ) : (
                   <p className="text-xs text-slate-500 max-w-sm mx-auto mb-6">
-                    Dziękujemy. Zlecenie hurtowe zostało poprawnie przekazane. Trwa generowanie faktury proforma.
+                    Dziękujemy! Zamówienie zostało przyjęte i przekazane do realizacji.
                   </p>
                 )}
 
@@ -1044,21 +1050,15 @@ const uniqueCategories = useMemo(() => {
                   </div>
                 )}
 
-                <div className="flex space-x-3 max-w-xs mx-auto">
+                <div className="flex justify-center">
                   <button
                     onClick={() => {
                       setOrderSuccess(null);
                       setIsCheckoutOpen(false);
                     }}
-                    className="w-1/2 bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition"
+                    className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-8 rounded-xl text-xs transition"
                   >
                     Kontynuuj zakupy
-                  </button>
-                  <button
-                    onClick={() => router.push(user ? '/client/dashboard' : '/')}
-                    className="w-1/2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold py-2.5 px-4 rounded-xl text-xs transition"
-                  >
-                    Powrót do portalu
                   </button>
                 </div>
               </div>
