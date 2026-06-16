@@ -64,7 +64,7 @@ async function sendAdminNotification(opts: {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: 'Askato B2B <onboarding@resend.dev>',
+        from: 'Askato B2B <b2b@askato.pl>',
         to: [opts.toEmail],
         subject: `Nowe zamówienie B2B – ${opts.clientName}`,
         html,
