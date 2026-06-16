@@ -326,7 +326,7 @@ export default function AdminDashboard() {
   const [showAddClient, setShowAddClient] = useState(false);
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [newClient, setNewClient] = useState({ email: '', password: '', companyName: '', nip: '', discountRate: '0' });
-  const [newProduct, setNewProduct] = useState({ name: '', sku: '', ean: '', category: '', price: '', stock: '100', packaging: 'PCB 1', imageUrl: '', age: '3+', description: '', discountRate: '0', originalPrice: '' });
+  const [newProduct, setNewProduct] = useState({ name: '', sku: '', ean: '', category: '', price: '', stock: '250', packaging: 'PCB 1', imageUrl: '', age: '3+', description: '', discountRate: '0', originalPrice: '' });
 
   // Order settings per offer
   const [offerOrderEmail, setOfferOrderEmail] = useState('');

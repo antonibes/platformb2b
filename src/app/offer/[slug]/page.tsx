@@ -184,12 +184,7 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
     let updatedCart = [...cart];
 
     const currentQtyInCart = existingIndex !== -1 ? cart[existingIndex].quantity : 0;
-    const newQuantity = currentQtyInCart + quantity;
-
-    if (newQuantity > product.stock) {
-      alert(`Przepraszamy, nie posiadamy tylu sztuk na stanie. Maksymalna dostępna ilość: ${product.stock}`);
-      return;
-    }
+    const newQuantity = Math.min(currentQtyInCart + quantity, 250);
 
     if (existingIndex !== -1) {
       updatedCart[existingIndex].quantity = newQuantity;
@@ -229,13 +224,8 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
       return;
     }
 
-    if (quantity > item.stock) {
-      alert(`Maksymalna dostępna ilość to ${item.stock} szt.`);
-      return;
-    }
-
-    const updatedCart = cart.map(item => 
-      item.id === productId ? { ...item, quantity } : item
+    const updatedCart = cart.map(item =>
+      item.id === productId ? { ...item, quantity: Math.min(quantity, 250) } : item
     );
     saveCart(updatedCart);
   };
@@ -592,11 +582,6 @@ const uniqueCategories = useMemo(() => {
                               }
                             }}
                           />
-                          {product.stock <= 10 && (
-                            <span className="absolute top-2 right-2 bg-[#CD2628] text-white text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider shadow z-10">
-                              Limit: {product.stock}
-                            </span>
-                          )}
                           {product.discountRate > 0 && (
                             <span className="absolute top-2 left-2 bg-[#CD2628] text-white text-[10px] font-black px-2 py-0.5 rounded-lg shadow-md z-10 animate-bounce">
                               -{Math.round(product.discountRate * 100)}%
@@ -663,7 +648,7 @@ const uniqueCategories = useMemo(() => {
                                 <input
                                   type="number"
                                   min="1"
-                                  max={product.stock}
+                                  max={250}
                                   defaultValue="1"
                                   id={`qty-${product.id}`}
                                   className="w-10 border border-slate-200 rounded-lg text-center text-xs py-1.5 focus:outline-none focus:ring-1 focus:ring-[#1C60B0] bg-white font-semibold"
@@ -1077,10 +1062,6 @@ const uniqueCategories = useMemo(() => {
                       <span className="text-slate-700 font-bold flex items-center gap-1"><Package size={13} /> {getPCBNum(selectedProductDetails.packaging)} szt.</span>
                     </div>
                     <div>
-                      <span className="text-slate-400 block uppercase tracking-wider text-[9px] font-bold">Dostępność:</span>
-                      <span className="text-slate-700 font-bold">{selectedProductDetails.stock} szt.</span>
-                    </div>
-                    <div>
                       <span className="text-slate-400 block uppercase tracking-wider text-[9px] font-bold">Cena katalogowa netto:</span>
                       {selectedProductDetails.discountRate > 0 ? (
                         <div className="flex flex-col">
@@ -1134,7 +1115,7 @@ const uniqueCategories = useMemo(() => {
                       <input
                         type="number"
                         min="1"
-                        max={selectedProductDetails.stock}
+                        max={250}
                         defaultValue="1"
                         id={`modal-qty-${selectedProductDetails.id}`}
                         className="w-14 border border-slate-200 rounded-xl text-center text-sm py-1.5 font-bold focus:outline-none focus:ring-1 focus:ring-[#1C60B0]"
