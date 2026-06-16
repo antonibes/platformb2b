@@ -136,24 +136,28 @@ export async function POST(request: NextRequest) {
       csvContent += `"${item.ean}";"${item.sku}";"${nameEscaped}";${item.price.toFixed(2).replace('.', ',')};${item.quantity};${lineVal.replace('.', ',')}\n`;
     });
 
-    // Send admin notification email (fire-and-forget, non-blocking)
+    // Send admin notification email
     let emailSent = false;
     try {
-      let notifyEmail = '';
+      // Priority: 1. per-offer email  2. NOTIFY_EMAIL env  3. SMTP_TO env
+      let notifyEmail = process.env.NOTIFY_EMAIL || process.env.SMTP_TO || '';
+      let offerTitle = offerSlug || 'Askato B2B';
 
-      // Look up offer's notification email if we have the slug
       if (offerSlug) {
         const offer = await db.offers.findBySlug(offerSlug).catch(() => null);
-        if (offer?.orderEmail) notifyEmail = offer.orderEmail;
+        if (offer) {
+          offerTitle = offer.title;
+          const perOfferEmail = offer.orderEmail?.trim();
+          if (perOfferEmail) notifyEmail = perOfferEmail;
+        }
       }
 
-      // Fallback to env var
-      if (!notifyEmail) notifyEmail = process.env.SMTP_TO || '';
+      console.log(`[Order API] Sending notification to="${notifyEmail}" offer="${offerTitle}" resend=${!!process.env.RESEND_API_KEY}`);
 
       if (notifyEmail) {
         await sendAdminNotification({
           toEmail: notifyEmail,
-          offerTitle: offerSlug || 'Askato B2B',
+          offerTitle,
           orderId: order.id,
           clientName,
           clientNip: clientNip || '',
@@ -165,9 +169,12 @@ export async function POST(request: NextRequest) {
           csvContent
         });
         emailSent = true;
+        console.log(`[Order API] Email sent OK to ${notifyEmail}`);
+      } else {
+        console.log('[Order API] No notification email configured — skipping');
       }
-    } catch (emailErr) {
-      console.error('[Order API] Email notification failed (order still saved):', emailErr);
+    } catch (emailErr: any) {
+      console.error('[Order API] Email notification failed:', emailErr?.message || emailErr);
     }
 
     return NextResponse.json({ success: true, orderId: order.id, emailSent, totalValue: order.totalValue });
