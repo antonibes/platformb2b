@@ -844,80 +844,39 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col md:flex-row font-sans">
       
-      {/* Sidebar Navigation - Clean White Layout */}
-      <aside className="w-full md:w-64 bg-white border-b md:border-b-0 md:border-r border-slate-200 flex-shrink-0 flex flex-col justify-between p-6 shadow-sm">
-        <div className="space-y-8">
-          {/* Logo container */}
-          <div className="p-3 bg-slate-50 rounded-2xl flex items-center justify-center border border-slate-100 shadow-sm">
+      {/* Sidebar Navigation */}
+      <aside className="w-full md:w-64 bg-white border-b md:border-b-0 md:border-r border-slate-200 flex-shrink-0 flex flex-col justify-between md:p-6 p-3 shadow-sm">
+        <div className="space-y-6">
+          {/* Logo — hidden on mobile to save space */}
+          <div className="hidden md:flex p-3 bg-slate-50 rounded-2xl items-center justify-center border border-slate-100 shadow-sm">
             <img src="/logo.png" alt="Askato Logo" className="h-10 object-contain" />
           </div>
 
-          {/* Navigation Links */}
-          <nav className="space-y-1.5">
-            <button
-              onClick={() => { setActiveTab('overview'); setSelectedOfferForEdit(null); }}
-              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                activeTab === 'overview' && !selectedOfferForEdit
-                  ? 'bg-[#1C60B0] text-white shadow-md shadow-blue-500/10' 
-                  : 'text-slate-655 hover:text-[#1C60B0] hover:bg-slate-50'
-              }`}
-            >
-              <BarChart3 size={18} />
-              <span>Dziennik i Live</span>
-            </button>
-
-            <button
-              onClick={() => { setActiveTab('offers'); }}
-              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                activeTab === 'offers' 
-                  ? 'bg-[#1C60B0] text-white shadow-md shadow-blue-500/10' 
-                  : 'text-slate-655 hover:text-[#1C60B0] hover:bg-slate-50'
-              }`}
-            >
-              <PlusCircle size={18} />
-              <span>Generator & Edycja</span>
-            </button>
-
-            <button
-              onClick={() => { setActiveTab('orders'); setSelectedOfferForEdit(null); }}
-              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                activeTab === 'orders' && !selectedOfferForEdit
-                  ? 'bg-[#1C60B0] text-white shadow-md shadow-blue-500/10' 
-                  : 'text-slate-655 hover:text-[#1C60B0] hover:bg-slate-50'
-              }`}
-            >
-              <ClipboardList size={18} />
-              <span>Zamówienia B2B</span>
-              {orders.filter(o => o.status === 'new').length > 0 && (
-                <span className="ml-auto bg-[#CD2628] text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full">
-                  {orders.filter(o => o.status === 'new').length}
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={() => { setActiveTab('clients'); setSelectedOfferForEdit(null); }}
-              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                activeTab === 'clients' && !selectedOfferForEdit
-                  ? 'bg-[#1C60B0] text-white shadow-md shadow-blue-500/10' 
-                  : 'text-slate-655 hover:text-[#1C60B0] hover:bg-slate-50'
-              }`}
-            >
-              <Users size={18} />
-              <span>Klienci i Rabaty</span>
-            </button>
-
-            <button
-              onClick={() => { setActiveTab('stats'); setSelectedOfferForEdit(null); }}
-              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                activeTab === 'stats' && !selectedOfferForEdit
-                  ? 'bg-[#1C60B0] text-white shadow-md shadow-blue-500/10' 
-                  : 'text-slate-655 hover:text-[#1C60B0] hover:bg-slate-50'
-              }`}
-            >
-              <BarChart3 size={18} />
-              <span>Statystyki sprzedaży</span>
-            </button>
+          {/* Navigation Links — horizontal scroll on mobile, vertical on desktop */}
+          <nav className="flex md:flex-col flex-row overflow-x-auto gap-1 md:space-y-1.5 md:gap-0 pb-1 md:pb-0 scrollbar-hide">
+            {[
+              { tab: 'overview', icon: <BarChart3 size={18} />, label: 'Dziennik', badge: null },
+              { tab: 'offers',   icon: <PlusCircle size={18} />, label: 'Oferty', badge: null },
+              { tab: 'orders',   icon: <ClipboardList size={18} />, label: 'Zamówienia', badge: orders.filter(o => o.status === 'new').length || null },
+              { tab: 'clients',  icon: <Users size={18} />, label: 'Klienci', badge: null },
+              { tab: 'stats',    icon: <BarChart3 size={18} />, label: 'Statystyki', badge: null },
+            ].map(({ tab, icon, label, badge }) => (
+              <button
+                key={tab}
+                onClick={() => { setActiveTab(tab as any); setSelectedOfferForEdit(null); }}
+                className={`flex-shrink-0 md:w-full flex md:flex-row flex-col items-center md:space-x-3 md:gap-0 gap-1 px-3 md:px-4 py-2 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap ${
+                  activeTab === tab && !selectedOfferForEdit
+                    ? 'bg-[#1C60B0] text-white shadow-md shadow-blue-500/10'
+                    : 'text-slate-600 hover:text-[#1C60B0] hover:bg-slate-50'
+                }`}
+              >
+                {icon}
+                <span>{label}</span>
+                {badge ? (
+                  <span className="md:ml-auto bg-[#CD2628] text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full">{badge}</span>
+                ) : null}
+              </button>
+            ))}
           </nav>
         </div>
 

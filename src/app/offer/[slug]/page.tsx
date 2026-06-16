@@ -977,7 +977,7 @@ const uniqueCategories = useMemo(() => {
                     }}
                     className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-8 rounded-xl text-xs transition"
                   >
-                    Kontynuuj zakupy
+                    Zapraszamy ponownie
                   </button>
                 </div>
               </div>
@@ -1225,6 +1225,14 @@ const uniqueCategories = useMemo(() => {
           </div>
         </div>
       )}
+
+      {/* Footer */}
+      <footer className="mt-12 py-6 border-t border-slate-200 bg-white">
+        <div className="max-w-[95%] mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-slate-400">
+          <span>© {new Date().getFullYear()} Askato Sp. z o.o. — Hurtownia Zabawek</span>
+          <span>Platforma B2B stworzona przez <span className="font-semibold text-slate-500">Antoni Beski</span></span>
+        </div>
+      </footer>
 
       {/* Subtle added to cart notification toast */}
       {addedNotification && (
