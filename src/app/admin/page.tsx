@@ -329,7 +329,6 @@ export default function AdminDashboard() {
   const [newProduct, setNewProduct] = useState({ name: '', sku: '', ean: '', category: '', price: '', stock: '100', packaging: 'PCB 1', imageUrl: '', age: '3+', description: '', discountRate: '0', originalPrice: '' });
 
   // Order settings per offer
-  const [offerOrderMode, setOfferOrderMode] = useState<'panel' | 'email'>('panel');
   const [offerOrderEmail, setOfferOrderEmail] = useState('');
   const [savingOrderSettings, setSavingOrderSettings] = useState(false);
 
@@ -445,7 +444,6 @@ export default function AdminDashboard() {
     setSelectedOfferForEdit(offer);
     setProductsLoading(true);
     setProductSearch('');
-    setOfferOrderMode(offer.orderMode || 'panel');
     setOfferOrderEmail(offer.orderEmail || '');
     try {
       const res = await fetch(`/api/admin/products?offerId=${offer.id}`);
@@ -699,20 +697,16 @@ export default function AdminDashboard() {
 
   const handleSaveOrderSettings = async () => {
     if (!selectedOfferForEdit) return;
-    if (offerOrderMode === 'email' && !offerOrderEmail.trim()) {
-      alert('Podaj adres e-mail odbiorcy zamówień.');
-      return;
-    }
     setSavingOrderSettings(true);
     try {
       const res = await fetch('/api/admin/offers', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ offerId: selectedOfferForEdit.id, action: 'orderSettings', orderMode: offerOrderMode, orderEmail: offerOrderEmail }),
+        body: JSON.stringify({ offerId: selectedOfferForEdit.id, action: 'orderSettings', orderMode: 'panel', orderEmail: offerOrderEmail }),
       });
       if (!res.ok) throw new Error((await res.json()).error || 'Błąd serwera');
-      setSelectedOfferForEdit(prev => prev ? { ...prev, orderMode: offerOrderMode, orderEmail: offerOrderEmail } : prev);
-      setOffers(prev => prev.map(o => o.id === selectedOfferForEdit.id ? { ...o, orderMode: offerOrderMode, orderEmail: offerOrderEmail } : o));
+      setSelectedOfferForEdit(prev => prev ? { ...prev, orderEmail: offerOrderEmail } : prev);
+      setOffers(prev => prev.map(o => o.id === selectedOfferForEdit.id ? { ...o, orderEmail: offerOrderEmail } : o));
     } catch (err: any) {
       alert(`Błąd: ${err.message}`);
     } finally {
@@ -1371,65 +1365,37 @@ export default function AdminDashboard() {
 
             {editorMode === 'settings' && (
               <div className="space-y-6 max-w-lg animate-fade-in">
-                <div>
-                  <h4 className="font-bold text-sm text-slate-800 mb-1">Jak klient wysyła zamówienie?</h4>
-                  <p className="text-xs text-slate-500 mb-4">Wybierz czy zamówienia trafiają do panelu administracyjnego (domyślnie), czy klient pobiera CSV i otwiera swojego maila.</p>
-
-                  <div className="space-y-3">
-                    <label className={`flex items-start gap-3 p-4 border rounded-xl cursor-pointer transition ${offerOrderMode === 'panel' ? 'border-[#1C60B0] bg-blue-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
-                      <input
-                        type="radio"
-                        name="orderMode"
-                        value="panel"
-                        checked={offerOrderMode === 'panel'}
-                        onChange={() => setOfferOrderMode('panel')}
-                        className="mt-0.5"
-                      />
-                      <div>
-                        <span className="font-bold text-sm text-slate-800 block">Wyślij do panelu (domyślnie)</span>
-                        <span className="text-xs text-slate-500">Zamówienie zapisuje się w zakładce &quot;Zamówienia&quot; w panelu admina. Nie wymaga konfiguracji.</span>
-                      </div>
-                    </label>
-
-                    <label className={`flex items-start gap-3 p-4 border rounded-xl cursor-pointer transition ${offerOrderMode === 'email' ? 'border-amber-400 bg-amber-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
-                      <input
-                        type="radio"
-                        name="orderMode"
-                        value="email"
-                        checked={offerOrderMode === 'email'}
-                        onChange={() => setOfferOrderMode('email')}
-                        className="mt-0.5"
-                      />
-                      <div>
-                        <span className="font-bold text-sm text-slate-800 block">Przez e-mail klienta</span>
-                        <span className="text-xs text-slate-500">Klient klika &quot;Wyślij&quot; → automatycznie pobiera plik CSV z kodami i ilościami → otwiera mu się skrzynka pocztowa z gotową wiadomością do Ciebie.</span>
-                      </div>
-                    </label>
-                  </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-800 space-y-1">
+                  <p className="font-bold">Jak to działa?</p>
+                  <p>Klient składa zamówienie w aplikacji → trafia ono do zakładki <strong>Zamówienia</strong> w panelu. Możesz je tam pobrać jako CSV.</p>
+                  <p>Jeśli podasz adres e-mail poniżej, aplikacja wyśle Ci automatyczne powiadomienie z podsumowaniem każdego nowego zamówienia.</p>
                 </div>
 
-                {offerOrderMode === 'email' && (
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1.5">
-                      Adres e-mail odbiorcy zamówień
-                    </label>
-                    <input
-                      type="email"
-                      value={offerOrderEmail}
-                      onChange={(e) => setOfferOrderEmail(e.target.value)}
-                      placeholder="np. biuro@askato.pl"
-                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/50 bg-slate-50"
-                    />
-                    <p className="text-[10px] text-slate-400 mt-1.5">Na ten adres trafi wiadomość od klienta z zamówieniem (plik CSV w treści).</p>
-                  </div>
-                )}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    E-mail powiadomień o nowych zamówieniach
+                  </label>
+                  <input
+                    type="email"
+                    value={offerOrderEmail}
+                    onChange={(e) => setOfferOrderEmail(e.target.value)}
+                    placeholder="np. biuro@askato.pl"
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1C60B0]/40 bg-slate-50"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1.5">
+                    Zostaw puste jeśli nie chcesz powiadomień e-mail — zamówienia i tak trafią do panelu.
+                    Wysyłka e-mail wymaga skonfigurowanego klucza <strong>RESEND_API_KEY</strong> w ustawieniach Vercel.
+                  </p>
+                </div>
 
                 <button
                   onClick={handleSaveOrderSettings}
                   disabled={savingOrderSettings}
                   className="bg-[#1C60B0] hover:bg-[#1A54A5] disabled:opacity-50 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition flex items-center gap-2"
                 >
-                  {savingOrderSettings ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /><span>Zapisywanie...</span></> : 'Zapisz ustawienia'}
+                  {savingOrderSettings
+                    ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /><span>Zapisywanie...</span></>
+                    : 'Zapisz'}
                 </button>
               </div>
             )}
