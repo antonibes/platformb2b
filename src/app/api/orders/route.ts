@@ -179,22 +179,23 @@ export async function POST(request: NextRequest) {
     const itemsForEmail = order.items.map(i => ({ sku: i.sku, name: i.name, quantity: i.quantity, price: i.price }));
     const csvBase64 = Buffer.from(csvContent, 'utf-8').toString('base64');
 
-    // Send admin notification (non-blocking)
-    sendEmail({
-      to: notifyEmail,
-      subject: `Nowe zamówienie B2B – ${clientName}`,
-      html: buildAdminHtml({ offerTitle, orderId: order.id, clientName, clientNip: clientNip || '', clientEmail, clientPhone: clientPhone || '', comments: comments || '', totalValue: order.totalValue, items: itemsForEmail }),
-      attachments: [{ filename: `zamowienie_${order.id}.csv`, content: csvBase64 }]
-    }).then(() => console.log(`[Order API] Admin notification sent to ${notifyEmail}`))
-      .catch((e: any) => console.error('[Order API] Admin email failed:', e?.message));
+    // Send both emails and wait for them (serverless functions terminate after response)
+    await Promise.allSettled([
+      sendEmail({
+        to: notifyEmail,
+        subject: `Nowe zamówienie B2B – ${clientName}`,
+        html: buildAdminHtml({ offerTitle, orderId: order.id, clientName, clientNip: clientNip || '', clientEmail, clientPhone: clientPhone || '', comments: comments || '', totalValue: order.totalValue, items: itemsForEmail }),
+        attachments: [{ filename: `zamowienie_${order.id}.csv`, content: csvBase64 }]
+      }).then(() => console.log(`[Order API] Admin email sent to ${notifyEmail}`))
+        .catch((e: any) => console.error('[Order API] Admin email failed:', e?.message)),
 
-    // Send client confirmation (non-blocking)
-    sendEmail({
-      to: clientEmail,
-      subject: `Potwierdzenie zamówienia – ${offerTitle}`,
-      html: buildClientHtml({ offerTitle, orderId: order.id, clientName, totalValue: order.totalValue, items: itemsForEmail })
-    }).then(() => console.log(`[Order API] Client confirmation sent to ${clientEmail}`))
-      .catch((e: any) => console.error('[Order API] Client email failed:', e?.message));
+      sendEmail({
+        to: clientEmail,
+        subject: `Potwierdzenie zamówienia – ${offerTitle}`,
+        html: buildClientHtml({ offerTitle, orderId: order.id, clientName, totalValue: order.totalValue, items: itemsForEmail })
+      }).then(() => console.log(`[Order API] Client confirmation sent to ${clientEmail}`))
+        .catch((e: any) => console.error('[Order API] Client email failed:', e?.message))
+    ]);
 
     return NextResponse.json({ success: true, orderId: order.id, totalValue: order.totalValue });
   } catch (error) {
