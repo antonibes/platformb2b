@@ -1,3 +1,4 @@
+// Platforma B2B Askato Sp. z o.o. — wykonanie: Beśka (beska.org)
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
@@ -121,6 +122,7 @@ function buildClientHtml(opts: {
     </div>
 
     <p style="margin-top:20px;font-size:11px;color:#aaa">Wiadomość wygenerowana automatycznie przez platformę B2B Askato Sp. z o.o.</p>
+    <p style="margin-top:4px;font-size:9px;color:#ccc">Powered by <a href="https://beska.org" style="color:#ccc;text-decoration:none">Beśka</a></p>
   </div>
 </div>`;
 }
