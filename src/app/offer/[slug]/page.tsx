@@ -72,6 +72,8 @@ export default function OfferPage({ params }: { params: { slug: string } }) {
   const [orderSuccess, setOrderSuccess] = useState<string | null>(null);
   const [selectedProductDetails, setSelectedProductDetails] = useState<Product | null>(null);
   const [addedNotification, setAddedNotification] = useState<{ name: string; quantity: number } | null>(null);
+  const [qtyPicker, setQtyPicker] = useState<Product | null>(null);
+  const [qtyPickerValue, setQtyPickerValue] = useState(1);
 
   // Auto-clear added notification after 3 seconds
   useEffect(() => {
@@ -636,34 +638,20 @@ const uniqueCategories = useMemo(() => {
                               <span className="text-[10px] text-slate-400 block mt-1 font-semibold leading-none">zł netto</span>
                             </div>
 
-                            {/* Add quantity controls — stacked on mobile, inline on desktop */}
+                            {/* Add to cart button */}
                             <div className="flex flex-col gap-1 sm:ml-auto w-full sm:w-auto items-end">
                               {inCart && (
                                 <div className="text-[10px] text-emerald-600 font-bold flex items-center gap-0.5 mb-0.5">
                                   <CheckCircle2 size={11} className="text-emerald-500 shrink-0" />
-                                  <span>Dodano ({inCart.quantity} szt.)</span>
+                                  <span>W koszyku: {inCart.quantity} szt.</span>
                                 </div>
                               )}
-                              <div className="flex flex-row items-center justify-end gap-1 w-full sm:w-auto">
-                                <input
-                                  type="number"
-                                  min="1"
-                                  max={250}
-                                  defaultValue="1"
-                                  id={`qty-${product.id}`}
-                                  className="w-10 border border-slate-200 rounded-lg text-center text-xs py-1.5 focus:outline-none focus:ring-1 focus:ring-[#1C60B0] bg-white font-semibold"
-                                />
-                                <button
-                                  onClick={() => {
-                                    const input = document.getElementById(`qty-${product.id}`) as HTMLInputElement;
-                                    const qty = parseInt(input?.value || '1', 10);
-                                    handleAddToCart(product, qty);
-                                  }}
-                                  className="bg-[#2D6AD5] hover:bg-[#1E56B8] text-white font-bold py-1.5 px-3 rounded-xl text-xs flex items-center justify-center space-x-1 transition shadow-sm whitespace-nowrap"
-                                >
-                                  <span>+ Dodaj</span>
-                                </button>
-                              </div>
+                              <button
+                                onClick={() => { setQtyPickerValue(1); setQtyPicker(product); }}
+                                className="bg-[#2D6AD5] hover:bg-[#1E56B8] active:bg-[#1848A0] text-white font-bold py-2 px-4 rounded-xl text-xs flex items-center justify-center space-x-1 transition shadow-sm whitespace-nowrap w-full sm:w-auto"
+                              >
+                                <span>+ Dodaj</span>
+                              </button>
                             </div>
                           </div>
 
@@ -1138,6 +1126,84 @@ const uniqueCategories = useMemo(() => {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quantity Picker Bottom Sheet */}
+      {qtyPicker && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div
+            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+            onClick={() => setQtyPicker(null)}
+          />
+          <div className="relative w-full max-w-lg bg-white rounded-t-3xl shadow-2xl p-6 pb-10 animate-slide-up">
+            {/* Handle bar */}
+            <div className="w-10 h-1 bg-slate-300 rounded-full mx-auto mb-5" />
+
+            {/* Product info */}
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-14 h-14 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0 overflow-hidden p-1">
+                <img
+                  src={qtyPicker.imageUrl}
+                  alt={qtyPicker.name}
+                  className="max-w-full max-h-full object-contain"
+                  onError={(e) => {
+                    const fb = qtyPicker._fallbackImage;
+                    if (fb && (e.target as HTMLImageElement).src !== fb) (e.target as HTMLImageElement).src = fb;
+                  }}
+                />
+              </div>
+              <div className="min-w-0">
+                <p className="font-extrabold text-slate-800 text-sm leading-snug line-clamp-2">{qtyPicker.name}</p>
+                <p className="text-[#CD2628] font-black text-base mt-0.5">{qtyPicker.price.toFixed(2)} zł <span className="text-slate-400 font-normal text-xs">/ szt.</span></p>
+              </div>
+            </div>
+
+            {/* Quantity display */}
+            <div className="flex items-center justify-center gap-4 mb-5">
+              <button
+                onClick={() => setQtyPickerValue(v => Math.max(1, v - 1))}
+                className="w-14 h-14 rounded-2xl bg-slate-100 active:bg-slate-200 text-slate-700 text-2xl font-bold flex items-center justify-center transition select-none"
+              >−</button>
+              <div className="text-center min-w-[80px]">
+                <span className="text-5xl font-black text-slate-800 leading-none">{qtyPickerValue}</span>
+                <span className="block text-xs text-slate-400 font-semibold mt-1">szt.</span>
+              </div>
+              <button
+                onClick={() => setQtyPickerValue(v => Math.min(250, v + 1))}
+                className="w-14 h-14 rounded-2xl bg-[#1C60B0] active:bg-[#1848A0] text-white text-2xl font-bold flex items-center justify-center transition select-none"
+              >+</button>
+            </div>
+
+            {/* Slider */}
+            <div className="px-2 mb-6">
+              <input
+                type="range"
+                min={1}
+                max={250}
+                value={qtyPickerValue}
+                onChange={(e) => setQtyPickerValue(parseInt(e.target.value, 10))}
+                className="w-full h-2 accent-[#1C60B0] cursor-pointer"
+              />
+              <div className="flex justify-between text-[10px] text-slate-400 font-semibold mt-1">
+                <span>1</span>
+                <span className="text-[#1C60B0] font-bold">{(qtyPicker.price * qtyPickerValue).toFixed(2)} zł netto</span>
+                <span>250</span>
+              </div>
+            </div>
+
+            {/* Confirm button */}
+            <button
+              onClick={() => {
+                handleAddToCart(qtyPicker, qtyPickerValue);
+                setQtyPicker(null);
+              }}
+              className="w-full bg-[#1C60B0] hover:bg-[#1848A0] active:bg-[#1540A0] text-white font-bold py-4 rounded-2xl text-sm flex items-center justify-center gap-2 transition shadow-lg"
+            >
+              <ShoppingBag size={16} />
+              <span>Dodaj {qtyPickerValue} szt. do koszyka</span>
+            </button>
           </div>
         </div>
       )}
