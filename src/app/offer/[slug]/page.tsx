@@ -1230,7 +1230,7 @@ const uniqueCategories = useMemo(() => {
       <footer className="mt-12 py-6 border-t border-slate-200 bg-white">
         <div className="max-w-[95%] mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-slate-400">
           <span>© {new Date().getFullYear()} Askato Sp. z o.o. — Hurtownia Zabawek</span>
-          <span>Platforma B2B stworzona przez <span className="font-semibold text-slate-500">Antoni Beski</span></span>
+          <span>Powered by <a href="https://beska.org" target="_blank" rel="noopener noreferrer" className="font-semibold text-slate-500 hover:text-[#1C60B0] transition-colors">Beśka</a></span>
         </div>
       </footer>
 
