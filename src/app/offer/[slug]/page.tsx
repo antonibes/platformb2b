@@ -647,10 +647,10 @@ const uniqueCategories = useMemo(() => {
                                 </div>
                               )}
                               <button
-                                onClick={() => { setQtyPickerValue(1); setQtyPicker(product); }}
-                                className="bg-[#2D6AD5] hover:bg-[#1E56B8] active:bg-[#1848A0] text-white font-bold py-2 px-4 rounded-xl text-xs flex items-center justify-center space-x-1 transition shadow-sm whitespace-nowrap w-full sm:w-auto"
+                                onClick={() => { setQtyPickerValue(inCart ? inCart.quantity : 1); setQtyPicker(product); }}
+                                className={`font-bold py-2 px-4 rounded-xl text-xs flex items-center justify-center space-x-1 transition shadow-sm whitespace-nowrap w-full sm:w-auto ${inCart ? 'bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white' : 'bg-[#2D6AD5] hover:bg-[#1E56B8] active:bg-[#1848A0] text-white'}`}
                               >
-                                <span>+ Dodaj</span>
+                                <span>{inCart ? 'Edytuj ilość' : '+ Dodaj'}</span>
                               </button>
                             </div>
                           </div>
@@ -1194,16 +1194,34 @@ const uniqueCategories = useMemo(() => {
             </div>
 
             {/* Confirm button */}
-            <button
-              onClick={() => {
-                handleAddToCart(qtyPicker, qtyPickerValue);
-                setQtyPicker(null);
-              }}
-              className="w-full bg-[#1C60B0] hover:bg-[#1848A0] active:bg-[#1540A0] text-white font-bold py-4 rounded-2xl text-sm flex items-center justify-center gap-2 transition shadow-lg"
-            >
-              <ShoppingBag size={16} />
-              <span>Dodaj {qtyPickerValue} szt. do koszyka</span>
-            </button>
+            {(() => {
+              const pickerInCart = cart.find(i => i.id === qtyPicker.id);
+              return pickerInCart ? (
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => { handleRemoveFromCart(qtyPicker.id); setQtyPicker(null); }}
+                    className="w-12 h-14 rounded-2xl bg-red-50 hover:bg-red-100 active:bg-red-200 text-[#CD2628] flex items-center justify-center transition shrink-0"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                  <button
+                    onClick={() => { handleUpdateQuantity(qtyPicker.id, qtyPickerValue); setQtyPicker(null); }}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold py-4 rounded-2xl text-sm flex items-center justify-center gap-2 transition shadow-lg"
+                  >
+                    <Check size={16} />
+                    <span>Ustaw {qtyPickerValue} szt.</span>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => { handleAddToCart(qtyPicker, qtyPickerValue); setQtyPicker(null); }}
+                  className="w-full bg-[#1C60B0] hover:bg-[#1848A0] active:bg-[#1540A0] text-white font-bold py-4 rounded-2xl text-sm flex items-center justify-center gap-2 transition shadow-lg"
+                >
+                  <ShoppingBag size={16} />
+                  <span>Dodaj {qtyPickerValue} szt. do koszyka</span>
+                </button>
+              );
+            })()}
           </div>
         </div>
       )}
