@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
 
     // Action: create new client (clientId-based, no password required at creation)
     if (action === 'create') {
-      const { clientId, email, companyName, nip, discountRate, sendSetupLink } = body;
+      const { clientId, email, companyName, nip, discountRate, sendSetupLink, password } = body;
       if (!clientId) {
         return NextResponse.json({ error: 'Identyfikator klienta jest wymagany' }, { status: 400 });
       }
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
 
         await sql`
           INSERT INTO b2b_users (id, client_id, email, password_hash, company_name, nip, discount_rate, role, setup_token, setup_complete)
-          VALUES (${id}, ${clientId}, ${email || ''}, '', ${companyName || ''}, ${nip || ''}, ${rate}, 'client', ${setupToken}, false)
+          VALUES (${id}, ${clientId}, ${email || ''}, ${password || ''}, ${companyName || ''}, ${nip || ''}, ${rate}, 'client', ${setupToken}, ${!!password})
         `;
       }
 

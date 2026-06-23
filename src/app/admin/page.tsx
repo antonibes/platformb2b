@@ -327,7 +327,7 @@ export default function AdminDashboard() {
   const [editingClient, setEditingClient] = useState<ClientUser | null>(null);
   const [showAddClient, setShowAddClient] = useState(false);
   const [showAddProduct, setShowAddProduct] = useState(false);
-  const [newClient, setNewClient] = useState({ email: '', password: '', companyName: '', nip: '', discountRate: '0' });
+  const [newClient, setNewClient] = useState({ clientId: '', email: '', password: '', companyName: '', nip: '', discountRate: '0' });
   const [newProduct, setNewProduct] = useState({ name: '', sku: '', ean: '', category: '', price: '', stock: '250', packaging: 'PCB 1', imageUrl: '', age: '3+', description: '', discountRate: '0', originalPrice: '' });
 
   // Order settings per offer
@@ -725,7 +725,7 @@ export default function AdminDashboard() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setClients(prev => [...prev, data.client]);
-      setNewClient({ email: '', password: '', companyName: '', nip: '', discountRate: '0' });
+      setNewClient({ clientId: '', email: '', password: '', companyName: '', nip: '', discountRate: '0' });
       setShowAddClient(false);
     } catch (err: any) { alert(`Błąd: ${err.message}`); }
   };
@@ -2232,7 +2232,8 @@ export default function AdminDashboard() {
                 <div><label className="block text-slate-500 font-semibold mb-1">Nazwa firmy *</label><input required value={newClient.companyName} onChange={e => setNewClient({...newClient, companyName: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
                 <div><label className="block text-slate-500 font-semibold mb-1">NIP</label><input value={newClient.nip} onChange={e => setNewClient({...newClient, nip: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
               </div>
-              <div><label className="block text-slate-500 font-semibold mb-1">E-mail (login) *</label><input required type="email" value={newClient.email} onChange={e => setNewClient({...newClient, email: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
+              <div><label className="block text-slate-500 font-semibold mb-1">E-mail klienta</label><input type="email" value={newClient.email} onChange={e => { const email = e.target.value; const autoId = email.split('@')[0].replace(/[^a-z0-9]/gi, '').toLowerCase(); setNewClient({...newClient, email, clientId: newClient.clientId || autoId}); }} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
+              <div><label className="block text-slate-500 font-semibold mb-1">Identyfikator logowania *<span className="text-slate-400 font-normal ml-1">(klient wpisuje to zamiast emaila)</span></label><input required value={newClient.clientId} onChange={e => setNewClient({...newClient, clientId: e.target.value.replace(/\s/g, '').toLowerCase()})} placeholder="np. misiek, firma123" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
               <div><label className="block text-slate-500 font-semibold mb-1">Hasło *</label><input required type="password" value={newClient.password} onChange={e => setNewClient({...newClient, password: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
               <div><label className="block text-slate-500 font-semibold mb-1">Rabat B2B (%)</label><input type="number" min="0" max="100" value={newClient.discountRate} onChange={e => setNewClient({...newClient, discountRate: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
               <button type="submit" className="w-full bg-[#1C60B0] text-white font-bold py-2.5 rounded-xl text-xs transition hover:bg-[#1A54A5]">Utwórz konto klienta</button>
