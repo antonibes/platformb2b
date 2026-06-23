@@ -311,6 +311,8 @@ export default function AdminDashboard() {
   const [uploadProgress, setUploadProgress] = useState('');
   const [uploadError, setUploadError] = useState('');
   const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [migrating, setMigrating] = useState(false);
+  const [migrateStatus, setMigrateStatus] = useState<string | null>(null);
 
   // Filter & Search states
   const [orderSearch, setOrderSearch] = useState('');
@@ -437,6 +439,27 @@ export default function AdminDashboard() {
   const handleLogout = () => {
     localStorage.removeItem('askato_user');
     router.push('/login');
+  };
+
+  const handleMigrateImages = async () => {
+    setMigrating(true);
+    setMigrateStatus('Migracja w toku...');
+    let totalMigrated = 0;
+    try {
+      while (true) {
+        const res = await fetch('/api/admin/migrate-images', { method: 'POST' });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        totalMigrated += data.migrated || 0;
+        setMigrateStatus(`Zmigrowano: ${totalMigrated} obrazków, pozostało: ${data.remaining}...`);
+        if (data.done || data.remaining === 0) break;
+      }
+      setMigrateStatus(`Gotowe! Zmigrowano ${totalMigrated} obrazków do Vercel Blob.`);
+    } catch (err: any) {
+      setMigrateStatus(`Błąd: ${err.message}`);
+    } finally {
+      setMigrating(false);
+    }
   };
 
   // Fetch products when an offer is selected for editing
@@ -568,10 +591,22 @@ export default function AdminDashboard() {
           try {
             const b64 = await compressImageToBase64(imgBuf);
             if (b64) {
+              let imageUrl = b64;
+              try {
+                const uploadRes = await fetch('/api/admin/upload-image', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ base64: b64, filename: `${prod.sku || prod.id}.jpg` })
+                });
+                if (uploadRes.ok) {
+                  const { url } = await uploadRes.json();
+                  if (url) imageUrl = url;
+                }
+              } catch { /* fallback to base64 if blob upload fails */ }
               await fetch('/api/admin/products', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ productId: prod.id, imageUrl: b64 })
+                body: JSON.stringify({ productId: prod.id, imageUrl })
               });
             }
           } catch { /* skip failed image, rest continue */ }
@@ -1522,7 +1557,23 @@ export default function AdminDashboard() {
             
             {/* Create Offer Form */}
             <div className="lg:col-span-1 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm h-fit">
-              <h3 className="font-bold text-sm text-slate-800 border-b border-slate-100 pb-3 mb-6">Generuj Nową Ofertę</h3>
+              <h3 className="font-bold text-sm text-slate-800 border-b border-slate-100 pb-3 mb-4">Generuj Nową Ofertę</h3>
+
+              {/* Image migration tool */}
+              <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2">
+                <p className="text-xs font-bold text-amber-800">Migracja obrazków do Vercel Blob</p>
+                <p className="text-[11px] text-amber-700">Jednorazowo przenieś stare obrazki z bazy danych do szybszego storage — zmniejszy transfer o 95%.</p>
+                {migrateStatus && (
+                  <p className="text-[11px] font-semibold text-amber-900 bg-amber-100 rounded-lg px-3 py-1.5">{migrateStatus}</p>
+                )}
+                <button
+                  onClick={handleMigrateImages}
+                  disabled={migrating}
+                  className="w-full bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-bold py-2 rounded-lg transition"
+                >
+                  {migrating ? 'Migracja...' : 'Migruj obrazki →'}
+                </button>
+              </div>
               
               <form onSubmit={handleCreateOffer} className="space-y-4">
                 {uploadError && (
@@ -2415,7 +2466,20 @@ export default function AdminDashboard() {
                           if (!file) return;
                           const buf = await file.arrayBuffer();
                           const b64 = await compressImageToBase64(buf, 600, 0.75);
-                          if (b64) setEditingProduct({ ...editingProduct, imageUrl: b64 });
+                          if (!b64) return;
+                          let imageUrl = b64;
+                          try {
+                            const uploadRes = await fetch('/api/admin/upload-image', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ base64: b64, filename: `${editingProduct.sku || editingProduct.id}.jpg` })
+                            });
+                            if (uploadRes.ok) {
+                              const { url } = await uploadRes.json();
+                              if (url) imageUrl = url;
+                            }
+                          } catch { /* fallback to base64 */ }
+                          setEditingProduct({ ...editingProduct, imageUrl });
                         }}
                       />
                       <span className="text-xs font-semibold text-[#1C60B0]">Kliknij aby wybrać nowe zdjęcie</span>
