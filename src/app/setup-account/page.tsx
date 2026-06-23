@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { CheckCircle2, Lock, User, Building2, Phone, Hash, Eye, EyeOff, ArrowRight } from 'lucide-react';
 
-export default function SetupAccountPage() {
+function SetupAccountForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get('token') || '';
@@ -212,5 +212,17 @@ export default function SetupAccountPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+export default function SetupAccountPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-[#1C60B0] border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <SetupAccountForm />
+    </Suspense>
   );
 }
