@@ -205,3 +205,4 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Błąd serwera podczas składania zamówienia' }, { status: 500 });
   }
 }
+ 
