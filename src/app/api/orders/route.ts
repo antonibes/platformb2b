@@ -19,7 +19,7 @@ async function sendEmail(opts: {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      from: 'Askato B2B <noreply@send.askato.pl>',
+      from: 'Askato B2B <platforma@askato.pl>',
       to: [opts.to],
       subject: opts.subject,
       html: opts.html,
