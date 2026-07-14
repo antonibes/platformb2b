@@ -341,7 +341,7 @@ export const db = {
     findBySlug: async (slug: string): Promise<Offer | null> => {
       const sql = getSql();
       if (sql) {
-        const rows = await sql`SELECT * FROM offers WHERE slug = ${slug} LIMIT 1`;
+        const rows = await sql`SELECT * FROM offers WHERE slug = ${slug} ORDER BY created_at DESC LIMIT 1`;
         return rows.length > 0 ? mapOffer(rows[0]) : null;
       }
       return readDb().offers.find(o => o.slug === slug) || null;
