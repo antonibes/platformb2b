@@ -342,14 +342,9 @@ export const db = {
     findBySlug: async (slug: string): Promise<Offer | null> => {
       const sql = getSql();
       if (sql) {
-        const rows = await sql`
-          SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email
-          FROM offers
-          WHERE slug = ${slug} AND is_active = true
-          ORDER BY created_at DESC
-          LIMIT 1
-        `;
-        return rows.length > 0 ? mapOffer(rows[0]) : null;
+        const rows = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email FROM offers ORDER BY created_at DESC`;
+        const match = rows.filter((r: any) => r.slug === slug && r.is_active).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        return match.length > 0 ? mapOffer(match[0]) : null;
       }
       return readDb().offers.find(o => o.slug === slug) || null;
     },
