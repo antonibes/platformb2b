@@ -334,7 +334,7 @@ export const db = {
     findMany: async (): Promise<Offer[]> => {
       const sql = getSql();
       if (sql) {
-        const rows = await sql`SELECT * FROM offers ORDER BY created_at DESC`;
+        const rows = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email FROM offers ORDER BY created_at DESC`;
         return rows.map(mapOffer);
       }
       return readDb().offers;
@@ -406,7 +406,8 @@ export const db = {
       const sql = getSql();
       if (sql) {
         const rows = await sql`
-          SELECT * FROM offers
+          SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email
+          FROM offers
           WHERE is_active = true
           ORDER BY is_featured DESC, created_at DESC
           LIMIT 1
@@ -454,7 +455,7 @@ export const db = {
     findMany: async (): Promise<Product[]> => {
       const sql = getSql();
       if (sql) {
-        const rows = await sql`SELECT * FROM products`;
+        const rows = await sql`SELECT id, offer_id, sku, ean, category, name, price, image_url, packaging, stock, description, age, discount_rate, original_price, position FROM products`;
         return rows.map(mapProduct);
       }
       return readDb().products;
@@ -462,7 +463,7 @@ export const db = {
     findByOfferId: async (offerId: string): Promise<Product[]> => {
       const sql = getSql();
       if (sql) {
-        const rows = await sql`SELECT * FROM products WHERE offer_id = ${offerId} ORDER BY position ASC, id ASC`;
+        const rows = await sql`SELECT id, offer_id, sku, ean, category, name, price, image_url, packaging, stock, description, age, discount_rate, original_price, position FROM products WHERE offer_id = ${offerId} ORDER BY position ASC, id ASC`;
         return rows.map(mapProduct);
       }
       return readDb().products.filter(p => p.offerId === offerId);
