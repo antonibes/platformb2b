@@ -342,7 +342,13 @@ export const db = {
     findBySlug: async (slug: string): Promise<Offer | null> => {
       const sql = getSql();
       if (sql) {
-        const rows = await sql`SELECT * FROM offers WHERE slug = ${slug} ORDER BY created_at DESC LIMIT 1`;
+        const rows = await sql`
+          SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email
+          FROM offers
+          WHERE slug = ${slug} AND is_active = true
+          ORDER BY created_at DESC
+          LIMIT 1
+        `;
         return rows.length > 0 ? mapOffer(rows[0]) : null;
       }
       return readDb().offers.find(o => o.slug === slug) || null;
@@ -399,15 +405,13 @@ export const db = {
     findFeatured: async (): Promise<Offer | null> => {
       const sql = getSql();
       if (sql) {
-        try {
-          const rows = await sql`SELECT * FROM offers WHERE is_featured = true LIMIT 1`;
-          if (rows.length > 0) return mapOffer(rows[0]);
-        } catch {
-          // is_featured column may not exist yet in Neon — fall through
-        }
-        // fall back to most recent active offer
-        const recent = await sql`SELECT * FROM offers WHERE is_active = true ORDER BY created_at DESC LIMIT 1`;
-        return recent.length > 0 ? mapOffer(recent[0]) : null;
+        const rows = await sql`
+          SELECT * FROM offers
+          WHERE is_active = true
+          ORDER BY is_featured DESC, created_at DESC
+          LIMIT 1
+        `;
+        return rows.length > 0 ? mapOffer(rows[0]) : null;
       }
       const all = readDb().offers;
       return all.find(o => (o as any).isFeatured) || all.filter(o => o.isActive).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] || null;
