@@ -110,13 +110,21 @@ const DEFAULT_DB: DatabaseSchema = {
 };
 
 // Check if we are connected to Postgres
-export const DB_MODULE_VERSION = 'v2-orderby-fix-2026-07-24';
+export const DB_MODULE_VERSION = 'v3-direct-endpoint-2026-07-24';
+
+// Pooler endpoint (pgbouncer) — use for writes
 const getSql = () => {
   const url = process.env.DATABASE_URL || process.env.POSTGRES_URL;
-  if (url) {
-    return neon(url);
-  }
-  return null;
+  return url ? neon(url) : null;
+};
+
+// Direct endpoint (no pooler) — use for reads to bypass replica routing / proxy cache
+const getSqlDirect = () => {
+  const url = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  if (!url) return null;
+  // Strip -pooler from hostname so reads hit the primary directly
+  const directUrl = url.replace(/-pooler\./, '.');
+  return neon(directUrl);
 };
 
 // Fallback JSON DB methods
@@ -332,7 +340,7 @@ export const db = {
   },
   offers: {
     findMany: async (): Promise<Offer[]> => {
-      const sql = getSql();
+      const sql = getSqlDirect();
       if (sql) {
         const rows = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email FROM offers ORDER BY created_at DESC`;
         return rows.map(mapOffer);
@@ -340,7 +348,7 @@ export const db = {
       return readDb().offers;
     },
     findBySlug: async (slug: string): Promise<Offer | null> => {
-      const sql = getSql();
+      const sql = getSqlDirect();
       if (sql) {
         const rows = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email FROM offers ORDER BY created_at DESC`;
         const match = rows.filter((r: any) => r.slug === slug && r.is_active).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -368,7 +376,7 @@ export const db = {
     update: async (id: string, updates: Partial<Offer>): Promise<Offer | null> => {
       const sql = getSql();
       if (sql) {
-        const existing = await sql`SELECT * FROM offers WHERE id = ${id} LIMIT 1`;
+        const existing = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email FROM offers WHERE id = ${id} LIMIT 1`;
         if (existing.length === 0) return null;
         const merged = { ...mapOffer(existing[0]), ...updates };
         await sql`
@@ -398,7 +406,7 @@ export const db = {
       writeDb(current);
     },
     findFeatured: async (): Promise<Offer | null> => {
-      const sql = getSql();
+      const sql = getSqlDirect();
       if (sql) {
         const rows = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email FROM offers ORDER BY created_at DESC`;
         const active = rows.filter((r: any) => r.is_active);
