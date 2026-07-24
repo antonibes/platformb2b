@@ -400,28 +400,24 @@ export const db = {
     findFeatured: async (): Promise<Offer | null> => {
       const sql = getSql();
       if (sql) {
-        const rows = await sql`
-          SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email
-          FROM offers
-          WHERE is_active = true
-          ORDER BY is_featured DESC, created_at DESC
-          LIMIT 1
-        `;
-        return rows.length > 0 ? mapOffer(rows[0]) : null;
+        const rows = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email FROM offers ORDER BY created_at DESC`;
+        const active = rows.filter((r: any) => r.is_active);
+        const featured = active.find((r: any) => r.is_featured);
+        const result = featured || active[0] || null;
+        return result ? mapOffer(result) : null;
       }
       const all = readDb().offers;
-      return all.find(o => (o as any).isFeatured) || all.filter(o => o.isActive).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] || null;
+      return all.find(o => o.isFeatured) || all.filter(o => o.isActive).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] || null;
     },
     setFeatured: async (id: string): Promise<void> => {
       const sql = getSql();
       if (sql) {
         try {
-          await sql`UPDATE offers SET is_featured = false`;
-          await sql`UPDATE offers SET is_featured = true WHERE id = ${id}`;
+          // Single atomic UPDATE: sets is_featured=true for target, false for all others
+          await sql`UPDATE offers SET is_featured = (id = ${id})`;
         } catch {
           await sql`ALTER TABLE offers ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT false`;
-          await sql`UPDATE offers SET is_featured = false`;
-          await sql`UPDATE offers SET is_featured = true WHERE id = ${id}`;
+          await sql`UPDATE offers SET is_featured = (id = ${id})`;
         }
         return;
       }
