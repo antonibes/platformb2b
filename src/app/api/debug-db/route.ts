@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
-import { db } from '@/lib/db';
+import { db, DB_MODULE_VERSION } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,5 +42,6 @@ export async function GET() {
     raw_findBySlug: rawBySlug,
     db_module_findMany: allOffers.map(o => ({ id: o.id, title: o.title, slug: o.slug })),
     db_module_findBySlug: bySlug ? { id: bySlug.id, title: bySlug.title, slug: bySlug.slug } : null,
+    db_module_version: DB_MODULE_VERSION,
   });
 }

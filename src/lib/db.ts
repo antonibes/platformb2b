@@ -110,6 +110,7 @@ const DEFAULT_DB: DatabaseSchema = {
 };
 
 // Check if we are connected to Postgres
+export const DB_MODULE_VERSION = 'v2-orderby-fix-2026-07-24';
 const getSql = () => {
   const url = process.env.DATABASE_URL || process.env.POSTGRES_URL;
   if (url) {
