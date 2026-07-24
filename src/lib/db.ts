@@ -342,7 +342,8 @@ export const db = {
     findMany: async (): Promise<Offer[]> => {
       const sql = getSqlDirect();
       if (sql) {
-        const rows = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email FROM offers ORDER BY created_at DESC`;
+        const _nc = BigInt(Date.now());
+        const rows = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email FROM offers WHERE ${_nc} > 0 ORDER BY created_at DESC`;
         return rows.map(mapOffer);
       }
       return readDb().offers;
@@ -350,7 +351,8 @@ export const db = {
     findBySlug: async (slug: string): Promise<Offer | null> => {
       const sql = getSqlDirect();
       if (sql) {
-        const rows = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email FROM offers ORDER BY created_at DESC`;
+        const _nc = BigInt(Date.now());
+        const rows = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email FROM offers WHERE ${_nc} > 0 ORDER BY created_at DESC`;
         const match = rows.filter((r: any) => r.slug === slug && r.is_active).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         return match.length > 0 ? mapOffer(match[0]) : null;
       }
@@ -408,7 +410,8 @@ export const db = {
     findFeatured: async (): Promise<Offer | null> => {
       const sql = getSqlDirect();
       if (sql) {
-        const rows = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email FROM offers ORDER BY created_at DESC`;
+        const _nc = BigInt(Date.now());
+        const rows = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email FROM offers WHERE ${_nc} > 0 ORDER BY created_at DESC`;
         const active = rows.filter((r: any) => r.is_active);
         const featured = active.find((r: any) => r.is_featured);
         const result = featured || active[0] || null;
@@ -421,11 +424,10 @@ export const db = {
       const sql = getSql();
       if (sql) {
         try {
-          // Single atomic UPDATE: sets is_featured=true for target, false for all others
-          await sql`UPDATE offers SET is_featured = (id = ${id})`;
+          await sql`UPDATE offers SET is_featured = CASE WHEN offers.id = ${id} THEN true ELSE false END`;
         } catch {
           await sql`ALTER TABLE offers ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT false`;
-          await sql`UPDATE offers SET is_featured = (id = ${id})`;
+          await sql`UPDATE offers SET is_featured = CASE WHEN offers.id = ${id} THEN true ELSE false END`;
         }
         return;
       }
