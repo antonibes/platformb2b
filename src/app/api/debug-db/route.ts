@@ -32,16 +32,24 @@ export async function GET() {
 
   // Through db module
   const allOffers = await db.offers.findMany();
-  const bySlug = await db.offers.findBySlug('oferta');
+  const bySlugOferta = await db.offers.findBySlug('oferta');
+  const bySlugOferta2 = await db.offers.findBySlug('oferta-2');
+  const featured = await db.offers.findFeatured();
+
+  // Raw featured query
+  const rawFeatured = rawSql ? await rawSql`SELECT id, title, slug, is_active, is_featured FROM offers WHERE is_featured = true ORDER BY created_at DESC LIMIT 1` : [];
 
   return NextResponse.json({
     DATABASE_URL: sanitize(dbUrl),
     POSTGRES_URL: sanitize(pgUrl),
     using: dbUrl ? 'DATABASE_URL' : pgUrl ? 'POSTGRES_URL' : 'none',
     raw_all_offers: rawAll,
-    raw_findBySlug: rawBySlug,
-    db_module_findMany: allOffers.map(o => ({ id: o.id, title: o.title, slug: o.slug })),
-    db_module_findBySlug: bySlug ? { id: bySlug.id, title: bySlug.title, slug: bySlug.slug } : null,
+    raw_findBySlug_oferta: rawBySlug,
+    raw_featured: rawFeatured,
+    db_findMany: allOffers.map(o => ({ id: o.id, title: o.title, slug: o.slug })),
+    db_findBySlug_oferta: bySlugOferta ? { id: bySlugOferta.id, slug: bySlugOferta.slug } : null,
+    db_findBySlug_oferta2: bySlugOferta2 ? { id: bySlugOferta2.id, slug: bySlugOferta2.slug } : null,
+    db_findFeatured: featured ? { id: featured.id, title: featured.title, slug: featured.slug } : null,
     db_module_version: DB_MODULE_VERSION,
   });
 }
