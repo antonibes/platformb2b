@@ -38,6 +38,8 @@ export async function GET() {
 
   // Raw featured query
   const rawFeatured = rawSql ? await rawSql`SELECT id, title, slug, is_active, is_featured FROM offers WHERE is_featured = true ORDER BY created_at DESC LIMIT 1` : [];
+  const ghostCheck = rawSql ? await rawSql`SELECT id, title, slug, created_at, is_featured FROM offers WHERE id = 'offer-1784030050900'` : [];
+  const allWithFeatured = rawSql ? await rawSql`SELECT id, title, slug, created_at, is_featured, is_active FROM offers` : [];
 
   return NextResponse.json({
     DATABASE_URL: sanitize(dbUrl),
@@ -51,5 +53,7 @@ export async function GET() {
     db_findBySlug_oferta2: bySlugOferta2 ? { id: bySlugOferta2.id, slug: bySlugOferta2.slug } : null,
     db_findFeatured: featured ? { id: featured.id, title: featured.title, slug: featured.slug } : null,
     db_module_version: DB_MODULE_VERSION,
+    ghost_check: ghostCheck,
+    all_with_featured: allWithFeatured,
   });
 }
