@@ -342,8 +342,8 @@ export const db = {
     findMany: async (): Promise<Offer[]> => {
       const sql = getSqlDirect();
       if (sql) {
-        const _nc = BigInt(Date.now());
-        const rows = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email FROM offers WHERE ${_nc} > 0 ORDER BY created_at DESC`;
+        const _nc = String(Date.now());
+        const rows = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email FROM offers WHERE ${_nc} > '' ORDER BY created_at DESC`;
         return rows.map(mapOffer);
       }
       return readDb().offers;
@@ -351,8 +351,8 @@ export const db = {
     findBySlug: async (slug: string): Promise<Offer | null> => {
       const sql = getSqlDirect();
       if (sql) {
-        const _nc = BigInt(Date.now());
-        const rows = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email FROM offers WHERE ${_nc} > 0 ORDER BY created_at DESC`;
+        const _nc = String(Date.now());
+        const rows = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email FROM offers WHERE ${_nc} > '' ORDER BY created_at DESC`;
         const match = rows.filter((r: any) => r.slug === slug && r.is_active).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         return match.length > 0 ? mapOffer(match[0]) : null;
       }
@@ -410,8 +410,8 @@ export const db = {
     findFeatured: async (): Promise<Offer | null> => {
       const sql = getSqlDirect();
       if (sql) {
-        const _nc = BigInt(Date.now());
-        const rows = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email FROM offers WHERE ${_nc} > 0 ORDER BY created_at DESC`;
+        const _nc = String(Date.now());
+        const rows = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email FROM offers WHERE ${_nc} > '' ORDER BY created_at DESC`;
         const active = rows.filter((r: any) => r.is_active);
         const featured = active.find((r: any) => r.is_featured);
         const result = featured || active[0] || null;
