@@ -101,7 +101,8 @@ export async function POST(request: NextRequest) {
         description: String(p.description || '').trim(),
         age: String(p.age || '3+').trim(),
         discountRate: parseFloat(p.discountRate) || 0,
-        originalPrice: Math.max(0, parseFloat(p.originalPrice) || parseFloat(p.price) || 0)
+        originalPrice: Math.max(0, parseFloat(p.originalPrice) || parseFloat(p.price) || 0),
+        promoPrice: parseFloat(p.promoPrice) > 0 ? parseFloat(p.promoPrice) : null
       }));
 
       const createdProducts = await db.products.createMany(parsedProducts);
@@ -177,7 +178,17 @@ export async function POST(request: NextRequest) {
     const nameIdx = findColIdx('nazwa', 'name', 'tytuł', 'tytul', 'towar', 'produkt');
     const catIdx = findColIdx('kategoria', 'category', 'dział', 'dzial', 'grupa');
     const descIdx = findColIdx('opis', 'description', 'desc', 'specyfikacja');
-    const priceIdx = findColIdx('cena netto', 'cena hurt', 'cena b2b', 'cena', 'netto');
+    const promoPriceIdx = findColIdx('cena promocyjna', 'cena promo', 'promocyjna');
+    // Exclude the promo column so a generic 'cena' match never picks it as the regular price
+    const priceIdx = (() => {
+      for (const t of ['cena netto', 'cena hurt', 'cena b2b', 'cena', 'netto']) {
+        const exact = headerRow.findIndex((h, i) => i !== promoPriceIdx && h === t);
+        if (exact !== -1) return exact;
+        const sub = headerRow.findIndex((h, i) => i !== promoPriceIdx && h.includes(t));
+        if (sub !== -1) return sub;
+      }
+      return undefined;
+    })();
     const stockIdx = findColIdx('zamówienie ilość', 'stan', 'stock', 'ilosc', 'ilość', 'dostęp', 'dostep');
     const pcbIdx = findColIdx('pcb', 'opakowanie', 'karton', 'zbiorcz');
     const ageIdx = findColIdx('wiek', 'age', 'od lat');
@@ -305,6 +316,8 @@ export async function POST(request: NextRequest) {
       const rawImage = getVal(row, imgIdx);
       const rawDiscount = getVal(row, discountIdx);
       const rawOrigPrice = getVal(row, origPriceIdx);
+      const rawPromoPrice = getVal(row, promoPriceIdx);
+      const promoPriceVal = rawPromoPrice !== undefined ? parsePrice(rawPromoPrice) : 0;
 
       // Skip row if no meaningful SKU or name
       if (!sku && !name) continue;
@@ -390,7 +403,8 @@ export async function POST(request: NextRequest) {
         description: String(description).trim(),
         age: ageVal,
         discountRate: discountRateVal,
-        originalPrice: parseFloat(origPriceVal.toFixed(2))
+        originalPrice: parseFloat(origPriceVal.toFixed(2)),
+        promoPrice: promoPriceVal > 0 ? parseFloat(promoPriceVal.toFixed(2)) : null
       });
     }
 
@@ -431,7 +445,7 @@ export async function DELETE(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
-    const { offerId, action, orderMode, orderEmail } = body;
+    const { offerId, action, orderMode, orderEmail, promoEnabled } = body;
     if (!offerId) return NextResponse.json({ error: 'Brak offerId' }, { status: 400 });
 
     if (action === 'orderSettings') {
@@ -439,6 +453,9 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: 'Nieprawidłowy orderMode' }, { status: 400 });
       }
       await db.offers.updateOrderSettings(offerId, orderMode, orderEmail || '');
+      if (typeof promoEnabled === 'boolean') {
+        await db.offers.updatePromoSettings(offerId, promoEnabled);
+      }
     } else {
       await db.offers.setFeatured(offerId);
     }

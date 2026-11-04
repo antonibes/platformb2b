@@ -627,14 +627,16 @@ const uniqueCategories = useMemo(() => {
                           {/* Pricing and Cart button */}
                           <div className="pt-2 border-t border-slate-100/50 flex flex-col sm:flex-row sm:items-end justify-between mt-auto gap-2">
                             <div className="shrink-0">
-                              {product.discountRate > 0 && (
-                                <span className="text-[10px] text-slate-400 line-through block leading-none mb-0.5">
-                                  {product.originalPrice.toFixed(2).replace('.', ',')} zł
+                              <div className="flex items-baseline gap-1.5 flex-wrap">
+                                {product.discountRate > 0 && (
+                                  <span className="text-xs text-slate-400 line-through font-semibold leading-none">
+                                    {product.originalPrice.toFixed(2).replace('.', ',')}
+                                  </span>
+                                )}
+                                <span className="text-lg font-black text-[#CD2628] leading-none">
+                                  {product.price.toFixed(2).replace('.', ',')}
                                 </span>
-                              )}
-                              <span className="text-lg font-black text-[#CD2628] leading-none">
-                                {product.price.toFixed(2).replace('.', ',')}
-                              </span>
+                              </div>
                               <span className="text-[10px] text-slate-400 block mt-1 font-semibold leading-none">zł netto</span>
                             </div>
 
