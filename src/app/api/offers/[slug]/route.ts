@@ -43,14 +43,20 @@ export async function GET(
       // For onError fallback: if stored URL is http → use it, else Unsplash
       const fallbackUrl = storedUrl.startsWith('http') ? storedUrl : FALLBACK_IMG;
 
+      // Promo prices apply only when the offer has them switched on and the promo is lower than the regular price.
+      // Otherwise the product shows its plain regular price with no strikethrough.
+      const promo = p.promoPrice && p.promoPrice > 0 && p.promoPrice < p.price ? p.promoPrice : null;
+      const isPromo = !!offer.promoEnabled && promo !== null;
+
       return {
         ...p,
         sku: normalizedSku,
         imageUrl: resolvedImageUrl,
         _fallbackImage: fallbackUrl,
-        originalPrice: p.originalPrice || p.price,
-        price: p.price,
-        discountRate: p.discountRate || 0
+        originalPrice: p.price,
+        price: isPromo ? promo! : p.price,
+        discountRate: isPromo ? 1 - promo! / p.price : 0,
+        isPromo
       };
     });
 

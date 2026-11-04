@@ -74,12 +74,23 @@ async function parseXlsxClientSide(file: File): Promise<{ textProducts: any[]; i
   const headerRow = rawRows[headerRowIdx].map((h: any) => String(h).trim().toLowerCase());
   const dataRows = rawRows.slice(headerRowIdx + 1);
 
+  const promoPriceIdx: number | undefined = (() => {
+    for (const t of ['cena promocyjna', 'cena promo', 'promocyjna']) {
+      const e = headerRow.findIndex((h: string) => h === t);
+      if (e !== -1) return e;
+      const s = headerRow.findIndex((h: string) => h.includes(t));
+      if (s !== -1) return s;
+    }
+    return undefined;
+  })();
+
+  // Column lookup that never returns the promo-price column (so generic terms like 'cena' don't grab it)
   const col = (...terms: string[]): number | undefined => {
     for (const t of terms) {
       const lo = t.toLowerCase().trim();
-      const e = headerRow.findIndex((h: string) => h === lo);
+      const e = headerRow.findIndex((h: string, i: number) => i !== promoPriceIdx && h === lo);
       if (e !== -1) return e;
-      const s = headerRow.findIndex((h: string) => h.includes(lo));
+      const s = headerRow.findIndex((h: string, i: number) => i !== promoPriceIdx && h.includes(lo));
       if (s !== -1) return s;
     }
     return undefined;
@@ -162,6 +173,8 @@ async function parseXlsxClientSide(file: File): Promise<{ textProducts: any[]; i
     const rawDiscount = gv(row, discountIdx);
     const rawOrigPrice = gv(row, origPriceIdx);
     const priceVal = _parsePriceC(rawPrice);
+    const rawPromo = gv(row, promoPriceIdx);
+    const promoVal = rawPromo !== undefined ? _parsePriceC(rawPromo) : 0;
     let discountRate = 0;
     if (rawDiscount !== undefined) {
       const d = parseFloat(String(rawDiscount).replace('%', '').trim());
@@ -192,7 +205,8 @@ async function parseXlsxClientSide(file: File): Promise<{ textProducts: any[]; i
       description: String(gv(row, descIdx) ?? '').trim(),
       age: _parseAgeC(gv(row, ageIdx)),
       discountRate,
-      originalPrice: parseFloat(origPrice.toFixed(2))
+      originalPrice: parseFloat(origPrice.toFixed(2)),
+      promoPrice: promoVal > 0 ? parseFloat(promoVal.toFixed(2)) : null
     });
   }
   if (textProducts.length === 0) throw new Error('Nie znaleziono żadnych produktów w pliku. Sprawdź format kolumn.');
@@ -245,6 +259,7 @@ interface Offer {
   isFeatured?: boolean;
   orderMode?: 'panel' | 'email';
   orderEmail?: string;
+  promoEnabled?: boolean;
   productCount: number;
   createdAt: string;
 }
@@ -283,6 +298,7 @@ interface Product {
   discountRate?: number;
   originalPrice?: number;
   position?: number;
+  promoPrice?: number | null;
 }
 
 export default function AdminDashboard() {
@@ -328,10 +344,11 @@ export default function AdminDashboard() {
   const [showAddClient, setShowAddClient] = useState(false);
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [newClient, setNewClient] = useState({ clientId: '', email: '', password: '', companyName: '', nip: '', discountRate: '0' });
-  const [newProduct, setNewProduct] = useState({ name: '', sku: '', ean: '', category: '', price: '', stock: '250', packaging: 'PCB 1', imageUrl: '', age: '3+', description: '', discountRate: '0', originalPrice: '' });
+  const [newProduct, setNewProduct] = useState({ name: '', sku: '', ean: '', category: '', price: '', stock: '250', packaging: 'PCB 1', imageUrl: '', age: '3+', description: '', promoPrice: '' });
 
   // Order settings per offer
   const [offerOrderEmail, setOfferOrderEmail] = useState('');
+  const [offerPromoEnabled, setOfferPromoEnabled] = useState(false);
   const [savingOrderSettings, setSavingOrderSettings] = useState(false);
 
   // Organizer and Order status states
@@ -468,6 +485,7 @@ export default function AdminDashboard() {
     setProductsLoading(true);
     setProductSearch('');
     setOfferOrderEmail(offer.orderEmail || '');
+    setOfferPromoEnabled(!!offer.promoEnabled);
     try {
       const res = await fetch(`/api/admin/products?offerId=${offer.id}`);
       const data = await res.json();
@@ -500,8 +518,7 @@ export default function AdminDashboard() {
           imageUrl: editingProduct.imageUrl,
           description: editingProduct.description,
           age: editingProduct.age || '3+',
-          discountRate: editingProduct.discountRate || 0,
-          originalPrice: editingProduct.originalPrice || editingProduct.price
+          promoPrice: editingProduct.promoPrice ?? ''
         })
       });
 
@@ -737,11 +754,11 @@ export default function AdminDashboard() {
       const res = await fetch('/api/admin/offers', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ offerId: selectedOfferForEdit.id, action: 'orderSettings', orderMode: 'panel', orderEmail: offerOrderEmail }),
+        body: JSON.stringify({ offerId: selectedOfferForEdit.id, action: 'orderSettings', orderMode: 'panel', orderEmail: offerOrderEmail, promoEnabled: offerPromoEnabled }),
       });
       if (!res.ok) throw new Error((await res.json()).error || 'Błąd serwera');
-      setSelectedOfferForEdit(prev => prev ? { ...prev, orderEmail: offerOrderEmail } : prev);
-      setOffers(prev => prev.map(o => o.id === selectedOfferForEdit.id ? { ...o, orderEmail: offerOrderEmail } : o));
+      setSelectedOfferForEdit(prev => prev ? { ...prev, orderEmail: offerOrderEmail, promoEnabled: offerPromoEnabled } : prev);
+      setOffers(prev => prev.map(o => o.id === selectedOfferForEdit.id ? { ...o, orderEmail: offerOrderEmail, promoEnabled: offerPromoEnabled } : o));
     } catch (err: any) {
       alert(`Błąd: ${err.message}`);
     } finally {
@@ -801,8 +818,6 @@ export default function AdminDashboard() {
     if (!selectedOfferForEdit) return;
     try {
       const priceVal = parseFloat(newProduct.price) || 0;
-      const discountRateVal = parseFloat(newProduct.discountRate) || 0;
-      const originalPriceVal = newProduct.originalPrice ? parseFloat(newProduct.originalPrice) : priceVal;
       const res = await fetch('/api/admin/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -811,15 +826,13 @@ export default function AdminDashboard() {
           offerId: selectedOfferForEdit.id,
           ...newProduct,
           price: priceVal,
-          stock: parseInt(newProduct.stock) || 100,
-          discountRate: discountRateVal / 100,
-          originalPrice: originalPriceVal
+          stock: parseInt(newProduct.stock) || 100
         })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setOfferProducts(prev => [...prev, data.product]);
-      setNewProduct({ name: '', sku: '', ean: '', category: '', price: '', stock: '100', packaging: 'PCB 1', imageUrl: '', age: '3+', description: '', discountRate: '0', originalPrice: '' });
+      setNewProduct({ name: '', sku: '', ean: '', category: '', price: '', stock: '100', packaging: 'PCB 1', imageUrl: '', age: '3+', description: '', promoPrice: '' });
       setShowAddProduct(false);
     } catch (err: any) { alert(`Błąd: ${err.message}`); }
   };
@@ -1010,7 +1023,7 @@ export default function AdminDashboard() {
                     : 'border-transparent text-slate-400 hover:text-slate-600'
                 }`}
               >
-                Ustawienia zamówień
+                Ustawienia oferty
               </button>
             </div>
 
@@ -1076,7 +1089,16 @@ export default function AdminDashboard() {
                             </td>
                             <td className="p-3 font-mono text-slate-500">{prod.sku}</td>
                             <td className="p-3 text-slate-500">{prod.category || 'Zabawki'}</td>
-                            <td className="p-3 text-right font-bold text-slate-700">{prod.price.toFixed(2)} PLN</td>
+                            <td className="p-3 text-right font-bold text-slate-700 whitespace-nowrap">
+                              {prod.promoPrice && prod.promoPrice < prod.price ? (
+                                <>
+                                  <span className="block text-[10px] font-normal text-slate-400 line-through">{prod.price.toFixed(2)} PLN</span>
+                                  <span className="text-[#CD2628]">{prod.promoPrice.toFixed(2)} PLN</span>
+                                </>
+                              ) : (
+                                <>{prod.price.toFixed(2)} PLN</>
+                              )}
+                            </td>
                             <td className="p-3 text-right text-slate-600">{prod.stock}</td>
                             <td className="p-3 text-center">
                               <div className="flex items-center justify-center gap-2">
@@ -1381,6 +1403,23 @@ export default function AdminDashboard() {
                     Wysyłka e-mail wymaga skonfigurowanego klucza <strong>RESEND_API_KEY</strong> w ustawieniach Vercel.
                   </p>
                 </div>
+
+                <label className="flex items-start gap-3 bg-slate-50 border border-slate-200 rounded-xl p-4 cursor-pointer hover:border-[#1C60B0]/40 transition">
+                  <input
+                    type="checkbox"
+                    checked={offerPromoEnabled}
+                    onChange={(e) => setOfferPromoEnabled(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-[#CD2628] cursor-pointer"
+                  />
+                  <span>
+                    <span className="block text-xs font-bold text-slate-700">Ceny promocyjne</span>
+                    <span className="block text-[10px] text-slate-400 mt-1">
+                      Produkty z wpisaną ceną promocyjną pokażą przekreśloną cenę regularną i obok cenę promocyjną.
+                      Produkty bez ceny promocyjnej mają zwykłą cenę. Cenę promocyjną ustawisz w edycji produktu
+                      lub w kolumnie <strong>Cena promocyjna</strong> w pliku Excel.
+                    </span>
+                  </span>
+                </label>
 
                 <button
                   onClick={handleSaveOrderSettings}
@@ -2261,39 +2300,15 @@ export default function AdminDashboard() {
                 <div><label className="block text-slate-500 font-semibold mb-1">Wiek</label><input value={newProduct.age} onChange={e => setNewProduct({...newProduct, age: e.target.value})} placeholder="3+" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
                 <div><label className="block text-slate-500 font-semibold mb-1">Pakowanie zbiorcze (PCB)</label><input value={newProduct.packaging} onChange={e => setNewProduct({...newProduct, packaging: e.target.value})} placeholder="PCB 1" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]" /></div>
                 <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Rabat (%)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={newProduct.discountRate}
-                    onChange={(e) => {
-                      const pct = e.target.value;
-                      const discountRate = parseFloat(pct) || 0;
-                      const priceVal = parseFloat(newProduct.price) || 0;
-                      const originalPrice = discountRate > 0 ? (priceVal / (1 - discountRate / 100)).toFixed(2) : priceVal.toString();
-                      setNewProduct({ ...newProduct, discountRate: pct, originalPrice });
-                    }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]"
-                    placeholder="np. 50"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Cena przed rabatem (PLN)</label>
+                  <label className="block text-slate-500 font-semibold mb-1">Cena promocyjna (PLN)</label>
                   <input
                     type="number"
                     step="0.01"
                     min="0"
-                    value={newProduct.originalPrice}
-                    onChange={(e) => {
-                      const origPrice = e.target.value;
-                      const origPriceVal = parseFloat(origPrice) || 0;
-                      const priceVal = parseFloat(newProduct.price) || 0;
-                      const discountRate = origPriceVal > priceVal ? Math.round(((origPriceVal - priceVal) / origPriceVal) * 100).toString() : '0';
-                      setNewProduct({ ...newProduct, originalPrice: origPrice, discountRate });
-                    }}
+                    value={newProduct.promoPrice}
+                    onChange={(e) => setNewProduct({ ...newProduct, promoPrice: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]"
-                    placeholder="Opcjonalnie"
+                    placeholder="Puste = brak promocji"
                   />
                 </div>
               </div>
@@ -2382,12 +2397,7 @@ export default function AdminDashboard() {
                   min="0"
                   required
                   value={editingProduct.price}
-                  onChange={(e) => {
-                    const price = parseFloat(e.target.value) || 0;
-                    const discountRate = editingProduct.discountRate || 0;
-                    const originalPrice = discountRate > 0 ? parseFloat((price / (1 - discountRate)).toFixed(2)) : price;
-                    setEditingProduct({ ...editingProduct, price, originalPrice });
-                  }}
+                  onChange={(e) => setEditingProduct({ ...editingProduct, price: parseFloat(e.target.value) || 0 })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-[#1C60B0]"
                 />
               </div>
@@ -2415,39 +2425,28 @@ export default function AdminDashboard() {
                 />
               </div>
 
-              <div>
-                <label className="block text-slate-500 font-semibold mb-1">Rabat (%)</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={Math.round((editingProduct.discountRate || 0) * 100)}
-                  onChange={(e) => {
-                    const pct = parseFloat(e.target.value) || 0;
-                    const discountRate = pct / 100;
-                    const originalPrice = discountRate > 0 ? parseFloat((editingProduct.price / (1 - discountRate)).toFixed(2)) : editingProduct.price;
-                    setEditingProduct({ ...editingProduct, discountRate, originalPrice });
-                  }}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]"
-                  placeholder="np. 50"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-500 font-semibold mb-1">Cena przed rabatem (PLN)</label>
+              <div className="md:col-span-2">
+                <label className="block text-slate-500 font-semibold mb-1">Cena promocyjna netto PLN</label>
                 <input
                   type="number"
                   step="0.01"
                   min="0"
-                  value={editingProduct.originalPrice || editingProduct.price}
-                  onChange={(e) => {
-                    const originalPrice = parseFloat(e.target.value) || 0;
-                    const discountRate = originalPrice > editingProduct.price ? parseFloat(((originalPrice - editingProduct.price) / originalPrice).toFixed(4)) : 0;
-                    setEditingProduct({ ...editingProduct, originalPrice, discountRate });
-                  }}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#1C60B0]"
-                  placeholder="np. 100.00"
+                  value={editingProduct.promoPrice ?? ''}
+                  onChange={(e) => setEditingProduct({ ...editingProduct, promoPrice: e.target.value === '' ? null : parseFloat(e.target.value) })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-[#CD2628] font-bold focus:outline-none focus:ring-1 focus:ring-[#1C60B0]"
+                  placeholder="Puste = brak promocji"
                 />
+                {(() => {
+                  const promo = editingProduct.promoPrice;
+                  if (!promo) return <p className="text-[10px] text-slate-400 mt-1">Zostaw puste, jeśli produkt nie jest przeceniony.</p>;
+                  if (promo >= editingProduct.price) return <p className="text-[10px] text-amber-600 mt-1">Cena promocyjna musi być niższa od ceny netto — inaczej nie zostanie pokazana.</p>;
+                  return (
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      <span className="line-through">{editingProduct.price.toFixed(2)} zł</span> → <strong className="text-[#CD2628]">{promo.toFixed(2)} zł</strong> (-{Math.round((1 - promo / editingProduct.price) * 100)}%)
+                      {!selectedOfferForEdit?.promoEnabled && <span className="text-amber-600"> · ceny promocyjne są wyłączone w ustawieniach tej oferty</span>}
+                    </p>
+                  );
+                })()}
               </div>
 
               <div className="md:col-span-2">

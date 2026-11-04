@@ -33,16 +33,14 @@ export async function POST(request: NextRequest) {
 
     // Action: add new product to offer
     if (action === 'add') {
-      const { offerId, sku, ean, name, price, imageUrl, packaging, stock, category, description, age } = updates;
+      const { offerId, sku, ean, name, price, imageUrl, packaging, stock, category, description, age, promoPrice } = updates;
       if (!offerId || !name) {
         return NextResponse.json({ error: 'Brak wymaganych pól (offerId, name)' }, { status: 400 });
       }
-      const id = `prod-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      const sql = getSql();
-      const newProd = {
-        id,
+      const promoVal = parseFloat(promoPrice);
+      const [newProd] = await db.products.createMany([{
         offerId,
-        sku: sku || `SKU-${id}`,
+        sku: sku || `SKU-${Date.now()}`,
         ean: ean || '',
         category: category || 'ZABAWKI',
         name,
@@ -51,17 +49,9 @@ export async function POST(request: NextRequest) {
         packaging: packaging || 'opak. 1 szt.',
         stock: parseInt(stock || '100', 10),
         description: description || '',
-        age: age || '3+'
-      };
-
-      if (sql) {
-        await sql`
-          INSERT INTO products (id, offer_id, sku, ean, category, name, price, image_url, packaging, stock, description, age)
-          VALUES (${newProd.id}, ${newProd.offerId}, ${newProd.sku}, ${newProd.ean}, ${newProd.category},
-                  ${newProd.name}, ${newProd.price}, ${newProd.imageUrl}, ${newProd.packaging},
-                  ${newProd.stock}, ${newProd.description}, ${newProd.age})
-        `;
-      }
+        age: age || '3+',
+        promoPrice: !isNaN(promoVal) && promoVal > 0 ? promoVal : null
+      }]);
       return NextResponse.json({ success: true, product: newProd });
     }
 
@@ -107,6 +97,11 @@ export async function POST(request: NextRequest) {
     if (updates.price !== undefined) {
       const priceVal = parseFloat(updates.price);
       if (!isNaN(priceVal) && priceVal >= 0) cleanUpdates.price = priceVal;
+    }
+    if (updates.promoPrice !== undefined) {
+      // Empty / zero clears the promotion for this product
+      const promoVal = parseFloat(updates.promoPrice);
+      cleanUpdates.promoPrice = !isNaN(promoVal) && promoVal > 0 ? promoVal : null;
     }
     if (updates.stock !== undefined) {
       const stockVal = parseInt(updates.stock, 10);

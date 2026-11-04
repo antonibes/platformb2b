@@ -28,6 +28,7 @@ export interface Offer {
   createdAt: string;
   orderMode: 'panel' | 'email';
   orderEmail: string;
+  promoEnabled?: boolean; // when true, products with promoPrice show crossed-out regular price
 }
 
 export interface Product {
@@ -46,6 +47,7 @@ export interface Product {
   discountRate?: number;
   originalPrice?: number;
   position?: number;
+  promoPrice?: number | null; // promotional net price; used only when offer.promoEnabled
 }
 
 export interface OrderItem {
@@ -127,6 +129,27 @@ const getSqlDirect = () => {
   return neon(directUrl);
 };
 
+// Lazily add promo columns to existing Postgres schemas (runs once per server instance)
+let promoSchemaReady: Promise<void> | null = null;
+const ensurePromoSchema = (sql: ReturnType<typeof neon<false, false>>): Promise<void> => {
+  if (!promoSchemaReady) {
+    promoSchemaReady = (async () => {
+      await sql`ALTER TABLE offers ADD COLUMN IF NOT EXISTS promo_enabled BOOLEAN DEFAULT false`;
+      await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS promo_price NUMERIC(10,2)`;
+    })().catch(err => {
+      promoSchemaReady = null;
+      throw err;
+    });
+  }
+  return promoSchemaReady;
+};
+
+const parsePromoPrice = (raw: any): number | null => {
+  if (raw === undefined || raw === null || raw === '') return null;
+  const n = parseFloat(raw);
+  return isNaN(n) || n <= 0 ? null : n;
+};
+
 // Fallback JSON DB methods
 function initializeDb() {
   if (!fs.existsSync(DB_FILE)) {
@@ -192,6 +215,7 @@ function mapOffer(row: any): Offer {
     createdAt: toUtcIsoString(row.created_at),
     orderMode: (row.order_mode === 'email' ? 'email' : 'panel') as 'panel' | 'email',
     orderEmail: row.order_email || '',
+    promoEnabled: !!row.promo_enabled,
   };
 }
 
@@ -211,7 +235,8 @@ function mapProduct(row: any): Product {
     age: row.age || undefined,
     discountRate: row.discount_rate !== undefined && row.discount_rate !== null ? parseFloat(row.discount_rate) : 0,
     originalPrice: row.original_price !== undefined && row.original_price !== null ? parseFloat(row.original_price) : parseFloat(row.price),
-    position: row.position !== undefined && row.position !== null ? parseInt(row.position, 10) : 0
+    position: row.position !== undefined && row.position !== null ? parseInt(row.position, 10) : 0,
+    promoPrice: parsePromoPrice(row.promo_price)
   };
 }
 
@@ -342,8 +367,9 @@ export const db = {
     findMany: async (): Promise<Offer[]> => {
       const sql = getSqlDirect();
       if (sql) {
+        await ensurePromoSchema(sql);
         const _nc = String(Date.now());
-        const rows = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email FROM offers WHERE ${_nc} > '' ORDER BY created_at DESC`;
+        const rows = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email, promo_enabled FROM offers WHERE ${_nc} > '' ORDER BY created_at DESC`;
         return rows.map(mapOffer);
       }
       return readDb().offers;
@@ -351,8 +377,9 @@ export const db = {
     findBySlug: async (slug: string): Promise<Offer | null> => {
       const sql = getSqlDirect();
       if (sql) {
+        await ensurePromoSchema(sql);
         const _nc = String(Date.now());
-        const rows = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email FROM offers WHERE ${_nc} > '' ORDER BY created_at DESC`;
+        const rows = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email, promo_enabled FROM offers WHERE ${_nc} > '' ORDER BY created_at DESC`;
         const match = rows.filter((r: any) => r.slug === slug && r.is_active).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         return match.length > 0 ? mapOffer(match[0]) : null;
       }
@@ -363,6 +390,7 @@ export const db = {
       const createdAt = new Date().toISOString();
       const sql = getSql();
       if (sql) {
+        await ensurePromoSchema(sql);
         await sql`
           INSERT INTO offers (id, title, slug, is_active, created_at)
           VALUES (${id}, ${offer.title}, ${offer.slug}, ${offer.isActive}, ${createdAt})
@@ -378,12 +406,14 @@ export const db = {
     update: async (id: string, updates: Partial<Offer>): Promise<Offer | null> => {
       const sql = getSql();
       if (sql) {
-        const existing = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email FROM offers WHERE id = ${id} LIMIT 1`;
+        await ensurePromoSchema(sql);
+        const existing = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email, promo_enabled FROM offers WHERE id = ${id} LIMIT 1`;
         if (existing.length === 0) return null;
         const merged = { ...mapOffer(existing[0]), ...updates };
         await sql`
           UPDATE offers 
-          SET title = ${merged.title}, slug = ${merged.slug}, is_active = ${merged.isActive}
+          SET title = ${merged.title}, slug = ${merged.slug}, is_active = ${merged.isActive},
+              promo_enabled = ${!!merged.promoEnabled}
           WHERE id = ${id}
         `;
         return merged;
@@ -400,6 +430,7 @@ export const db = {
     delete: async (id: string): Promise<void> => {
       const sql = getSql();
       if (sql) {
+        await ensurePromoSchema(sql);
         await sql`DELETE FROM offers WHERE id = ${id}`;
         return;
       }
@@ -410,8 +441,9 @@ export const db = {
     findFeatured: async (): Promise<Offer | null> => {
       const sql = getSqlDirect();
       if (sql) {
+        await ensurePromoSchema(sql);
         const _nc = String(Date.now());
-        const rows = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email FROM offers WHERE ${_nc} > '' ORDER BY created_at DESC`;
+        const rows = await sql`SELECT id, title, slug, is_active, is_featured, created_at, order_mode, order_email, promo_enabled FROM offers WHERE ${_nc} > '' ORDER BY created_at DESC`;
         const active = rows.filter((r: any) => r.is_active);
         const featured = active.find((r: any) => r.is_featured);
         const result = featured || active[0] || null;
@@ -423,6 +455,7 @@ export const db = {
     setFeatured: async (id: string): Promise<void> => {
       const sql = getSql();
       if (sql) {
+        await ensurePromoSchema(sql);
         try {
           await sql`UPDATE offers SET is_featured = CASE WHEN offers.id = ${id} THEN true ELSE false END`;
         } catch {
@@ -438,6 +471,7 @@ export const db = {
     updateOrderSettings: async (id: string, orderMode: 'panel' | 'email', orderEmail: string): Promise<void> => {
       const sql = getSql();
       if (sql) {
+        await ensurePromoSchema(sql);
         try {
           await sql`UPDATE offers SET order_mode = ${orderMode}, order_email = ${orderEmail} WHERE id = ${id}`;
         } catch {
@@ -450,13 +484,25 @@ export const db = {
       const current = readDb();
       current.offers = current.offers.map(o => o.id === id ? { ...o, orderMode, orderEmail } : o);
       writeDb(current);
+    },
+    updatePromoSettings: async (id: string, promoEnabled: boolean): Promise<void> => {
+      const sql = getSql();
+      if (sql) {
+        await ensurePromoSchema(sql);
+        await sql`UPDATE offers SET promo_enabled = ${promoEnabled} WHERE id = ${id}`;
+        return;
+      }
+      const current = readDb();
+      current.offers = current.offers.map(o => o.id === id ? { ...o, promoEnabled } : o);
+      writeDb(current);
     }
   },
   products: {
     findMany: async (): Promise<Product[]> => {
       const sql = getSql();
       if (sql) {
-        const rows = await sql`SELECT id, offer_id, sku, ean, category, name, price, image_url, packaging, stock, description, age, discount_rate, original_price, position FROM products`;
+        await ensurePromoSchema(sql);
+        const rows = await sql`SELECT id, offer_id, sku, ean, category, name, price, image_url, packaging, stock, description, age, discount_rate, original_price, position, promo_price FROM products`;
         return rows.map(mapProduct);
       }
       return readDb().products;
@@ -464,7 +510,8 @@ export const db = {
     findByOfferId: async (offerId: string): Promise<Product[]> => {
       const sql = getSql();
       if (sql) {
-        const rows = await sql`SELECT id, offer_id, sku, ean, category, name, price, image_url, packaging, stock, description, age, discount_rate, original_price, position FROM products WHERE offer_id = ${offerId} ORDER BY position ASC, id ASC`;
+        await ensurePromoSchema(sql);
+        const rows = await sql`SELECT id, offer_id, sku, ean, category, name, price, image_url, packaging, stock, description, age, discount_rate, original_price, position, promo_price FROM products WHERE offer_id = ${offerId} ORDER BY position ASC, id ASC`;
         return rows.map(mapProduct);
       }
       return readDb().products.filter(p => p.offerId === offerId);
@@ -475,14 +522,15 @@ export const db = {
       
       if (sql) {
         if (newProducts.length === 0) return [];
-        
+        await ensurePromoSchema(sql);
+
         const values: any[] = [];
         const placeholders: string[] = [];
         let index = 1;
         
         newProducts.forEach((p, i) => {
           const id = `prod-${Date.now()}-${String(i).padStart(6, '0')}`;
-          placeholders.push(`($${index}, $${index + 1}, $${index + 2}, $${index + 3}, $${index + 4}, $${index + 5}, $${index + 6}, $${index + 7}, $${index + 8}, $${index + 9}, $${index + 10}, $${index + 11}, $${index + 12}, $${index + 13})`);
+          placeholders.push(`(${Array.from({ length: 15 }, (_, k) => `$${index + k}`).join(', ')})`);
           values.push(
             id,
             p.offerId,
@@ -497,14 +545,15 @@ export const db = {
             p.description || null,
             p.age || null,
             p.discountRate || 0,
-            p.originalPrice || p.price
+            p.originalPrice || p.price,
+            parsePromoPrice(p.promoPrice)
           );
-          addedProducts.push({ ...p, id, discountRate: p.discountRate || 0, originalPrice: p.originalPrice || p.price });
-          index += 14;
+          addedProducts.push({ ...p, id, discountRate: p.discountRate || 0, originalPrice: p.originalPrice || p.price, promoPrice: parsePromoPrice(p.promoPrice) });
+          index += 15;
         });
         
         const query = `
-          INSERT INTO products (id, offer_id, sku, ean, category, name, price, image_url, packaging, stock, description, age, discount_rate, original_price)
+          INSERT INTO products (id, offer_id, sku, ean, category, name, price, image_url, packaging, stock, description, age, discount_rate, original_price, promo_price)
           VALUES ${placeholders.join(', ')}
         `;
         
@@ -518,7 +567,8 @@ export const db = {
           ...p, 
           id: `prod-${Date.now()}-${String(index).padStart(6, '0')}`,
           discountRate: p.discountRate || 0,
-          originalPrice: p.originalPrice || p.price
+          originalPrice: p.originalPrice || p.price,
+          promoPrice: parsePromoPrice(p.promoPrice)
         };
         current.products.push(prod);
         addedProducts.push(prod);
@@ -530,6 +580,7 @@ export const db = {
       if (items.length === 0) return;
       const sql = getSql();
       if (sql) {
+        await ensurePromoSchema(sql);
         const ids = items.map(x => x.id);
         const categories = items.map(x => x.category);
         const positions = items.map(x => x.position);
@@ -556,6 +607,7 @@ export const db = {
     update: async (id: string, updates: Partial<Product>): Promise<Product | null> => {
       const sql = getSql();
       if (sql) {
+        await ensurePromoSchema(sql);
         const rows = await sql`SELECT * FROM products WHERE id = ${id} LIMIT 1`;
         if (rows.length === 0) return null;
         const merged = { ...mapProduct(rows[0]), ...updates };
@@ -567,7 +619,8 @@ export const db = {
               packaging = ${merged.packaging}, stock = ${merged.stock},
               description = ${merged.description || null}, age = ${merged.age || null},
               discount_rate = ${merged.discountRate || 0}, original_price = ${merged.originalPrice || merged.price},
-              position = ${merged.position || 0}
+              position = ${merged.position || 0},
+              promo_price = ${parsePromoPrice(merged.promoPrice)}
           WHERE id = ${id}
         `;
         return merged;
@@ -584,6 +637,7 @@ export const db = {
     deleteByOfferId: async (offerId: string): Promise<void> => {
       const sql = getSql();
       if (sql) {
+        await ensurePromoSchema(sql);
         await sql`DELETE FROM products WHERE offer_id = ${offerId}`;
         return;
       }
